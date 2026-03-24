@@ -24,9 +24,50 @@ export function RudderWheel({ rudder }: { rudder: number }) {
     );
   }
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-      <div style={{ position: "relative", width: 92, height: 92 }}>
-        <svg width={92} height={92} style={{ position: "absolute", top: 0, left: 0 }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 0,
+        flexShrink: 0,
+        minWidth: 96,
+      }}
+    >
+      {/* Shift wheel graphic up so it clears the caption below (layout box stays 92px tall) */}
+      <div
+        style={{
+          position: "relative",
+          width: 92,
+          height: 92,
+          transform: "translateY(-16px)",
+          isolation: "isolate",
+        }}
+      >
+        {/* Shadow sits under the wheel (lower z-index) */}
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            width: 86,
+            height: 86,
+            marginLeft: -43,
+            marginTop: -43,
+            borderRadius: "50%",
+            background: "radial-gradient(circle at 50% 45%, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.22) 45%, transparent 72%)",
+            filter: "blur(5px)",
+            transform: "translateY(4px)",
+            zIndex: 0,
+            pointerEvents: "none",
+          }}
+        />
+        <svg
+          width={92}
+          height={92}
+          style={{ position: "absolute", top: 0, left: 0, zIndex: 1 }}
+        >
           <circle cx={C} cy={C} r={R} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={5} />
           {arc}
         </svg>
@@ -44,6 +85,8 @@ export function RudderWheel({ rudder }: { rudder: number }) {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            zIndex: 2,
+            boxShadow: "0 2px 0 rgba(255,255,255,0.06) inset",
           }}
         >
           {[0, 45, 90, 135, 180, 225, 270, 315].map((a) => (
@@ -75,10 +118,22 @@ export function RudderWheel({ rudder }: { rudder: number }) {
           />
         </div>
       </div>
-      <div style={{ fontSize: 11, color: "#d0a860", fontWeight: 700, letterSpacing: 1 }}>
+      <div
+        style={{
+          marginTop: 6,
+          fontSize: 10,
+          color: "#d0a860",
+          fontWeight: 700,
+          letterSpacing: 0.5,
+          textAlign: "center",
+          lineHeight: 1.35,
+          whiteSpace: "nowrap",
+          maxWidth: "100%",
+        }}
+      >
         {rudder >= 0 ? "+" : ""}
-        {Math.round(rudder)}°&nbsp;
-        {rudder < -1 ? "◄ PORT" : rudder > 1 ? "STBD ►" : "AMIDSHIPS"}
+        {Math.round(rudder)}°{" "}
+        {rudder < -1 ? "◄ PORT" : rudder > 1 ? "STBD ►" : "MID"}
       </div>
     </div>
   );

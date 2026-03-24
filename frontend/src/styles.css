@@ -99,14 +99,9 @@ canvas.simCanvas {
   height: auto;
   display: block;
   border-radius: 12px;
-  box-shadow: 0 12px 38px rgba(0, 0, 0, 0.55);
+  /* Softer, shorter drop so it doesn’t read as sitting over the helm below */
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.42);
   outline: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.footerNote {
-  font-size: 12px;
-  text-align: center;
-  color: rgba(255, 255, 255, 0.35);
 }
 
 @media (max-width: 760px) {

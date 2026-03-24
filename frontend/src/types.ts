@@ -69,6 +69,22 @@ export type LocalVessel = {
   y: number;
   heading: number;
   speed: number;
+  /** AI: slowly steers toward this course (degrees). */
+  targetHeading?: number;
+  /** Collision: vessel sinks and stops. */
+  sunk?: boolean;
+  /** 0–1 sink animation; at 1 hull is fully submerged (no draw). */
+  sinkT?: number;
+};
+
+/** Falling cherry-blossom pickup (bonus score). */
+export type CherryFlower = {
+  id: number;
+  x: number;
+  y: number;
+  rot: number;
+  vy: number;
+  vx: number;
 };
 
 export type LocalState = {
@@ -76,8 +92,11 @@ export type LocalState = {
   cargo: LocalVessel;
   ferry: LocalVessel;
   fishers: LocalVessel[];
+  /** Extra NPC vessels (collisions deduct score). */
+  traffic: LocalVessel[];
   cam: { x: number; y: number };
   zone: string;
   time: number;
+  cherryFlowers: CherryFlower[];
 };
 

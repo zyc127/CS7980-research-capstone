@@ -1,5 +1,5 @@
-export function ThrottleLever({ speed }: { speed: number }) {
-  const pct = (speed + 3) / 16;
+export function ThrottleLever({ speed, maxKn = 18 }: { speed: number; maxKn?: number }) {
+  const pct = (speed + 3) / (maxKn + 3);
   const top = (1 - pct) * 90;
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>

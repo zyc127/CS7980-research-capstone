@@ -1,6 +1,6 @@
-import type { CreateSessionResponse, StepResponse, BackendState } from "./types";
+import type { CreateSessionResponse, StepResponse, BackendState } from "../types";
 
-export type BackendClientConfig = {
+export type ApiClientConfig = {
   baseUrl: string;
 };
 
@@ -17,10 +17,10 @@ async function asJson<T>(r: Response): Promise<T> {
 }
 
 /**
- * Browser-side HTTP client for the FastAPI backend in `backend/api.py`.
- * (The frontend cannot import/execute Python directly.)
+ * HTTP client for the FastAPI backend (`backend/api.py`).
+ * @see services/ — API / transport layer (MVC: “model” access to server state)
  */
-export function createBackendClient(cfg?: Partial<BackendClientConfig>) {
+export function createApiClient(cfg?: Partial<ApiClientConfig>) {
   const baseUrl = cfg?.baseUrl ?? import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
   return {
@@ -82,3 +82,5 @@ export function createBackendClient(cfg?: Partial<BackendClientConfig>) {
   };
 }
 
+/** @deprecated Use createApiClient */
+export const createBackendClient = createApiClient;

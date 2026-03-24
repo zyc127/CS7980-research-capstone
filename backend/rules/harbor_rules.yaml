@@ -180,9 +180,6 @@ rules:
       - left: "global_metrics.tugboat_cargo_distance"
         operator: "<"
         right: 15.0
-      - left: "agents.tugboat.speed"
-        operator: ">"
-        right: 2.0
     logic: "AND"
     action:
       - type: "set"
@@ -501,12 +498,6 @@ rules:
       - left: "global_metrics.tugboat_cargo_distance"
         operator: "<"
         right: 10.0
-      - left: "agents.tugboat.speed"
-        operator: ">"
-        right: 1.0
-      - left: "agents.cargo_ship.speed"
-        operator: ">"
-        right: 1.0
     logic: "AND"
     action:
       - type: "set"
