@@ -18,43 +18,136 @@ export function AnalogGauge({
   const v = typeof value === "number" ? value : Number.parseFloat(value) || 0;
   const pct = Math.max(0, Math.min(1, (v - min) / (max - min)));
   const angle = -135 + pct * 270;
-  const r = size / 2 - 3;
+
+  const r = size / 2 - 4;
   const hub = size / 2;
+
+  // Arc path helpers
+  const polar = (deg: number, radius: number) => {
+    const rad = ((deg - 90) * Math.PI) / 180;
+    return { x: hub + radius * Math.cos(rad), y: hub + radius * Math.sin(rad) };
+  };
+
+  // Background arc (full 270°)
+  const arcStart = polar(-135, r - 2);
+  const arcEnd   = polar(135, r - 2);
+  const arcPath  = `M ${arcStart.x} ${arcStart.y} A ${r - 2} ${r - 2} 0 1 1 ${arcEnd.x} ${arcEnd.y}`;
+
+  // Value arc
+  const valDeg = -135 + pct * 270;
+  const valEnd = polar(valDeg, r - 2);
+  const largeArc = pct > 0.5 ? 1 : 0;
+  const valPath = pct > 0
+    ? `M ${arcStart.x} ${arcStart.y} A ${r - 2} ${r - 2} 0 ${largeArc} 1 ${valEnd.x} ${valEnd.y}`
+    : null;
+
+  // Needle
+  const needleRad = ((angle - 90) * Math.PI) / 180;
+  const nx1 = hub + 5 * Math.cos(needleRad);
+  const ny1 = hub + 5 * Math.sin(needleRad);
+  const nx2 = hub + (r - 5) * Math.cos(needleRad);
+  const ny2 = hub + (r - 5) * Math.sin(needleRad);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-      <svg width={size} height={size}>
-        <circle cx={hub} cy={hub} r={r} fill="#080604" stroke={warn ? "#aa2010" : "#382010"} strokeWidth={3} />
+      <svg width={size} height={size} style={{ overflow: "visible" }}>
+        {/* Outer ring */}
+        <circle
+          cx={hub} cy={hub} r={r}
+          fill="#060402"
+          stroke={warn ? "rgba(180, 30, 10, 0.6)" : "rgba(50, 30, 10, 0.8)"}
+          strokeWidth={2.5}
+        />
+
+        {/* Inner subtle gradient */}
+        <defs>
+          <radialGradient id={`g${label.replace(/\s/g, "")}`} cx="50%" cy="30%" r="70%">
+            <stop offset="0%" stopColor="rgba(255,255,255,0.04)" />
+            <stop offset="100%" stopColor="rgba(0,0,0,0)" />
+          </radialGradient>
+        </defs>
+        <circle cx={hub} cy={hub} r={r - 1} fill={`url(#g${label.replace(/\s/g, "")})`} />
+
+        {/* Background track arc */}
+        <path
+          d={arcPath}
+          fill="none"
+          stroke="rgba(80, 50, 15, 0.35)"
+          strokeWidth={3}
+          strokeLinecap="round"
+        />
+
+        {/* Value fill arc */}
+        {valPath && (
+          <path
+            d={valPath}
+            fill="none"
+            stroke={warn ? "#ff3010" : color}
+            strokeWidth={3}
+            strokeLinecap="round"
+            style={{ filter: warn ? `drop-shadow(0 0 3px ${color})` : undefined }}
+          />
+        )}
+
+        {/* Tick marks */}
         {Array.from({ length: 13 }, (_, i) => {
-          const a = ((-135 + i * 22.5) * Math.PI) / 180;
-          const ri = i % 3 === 0 ? r - 13 : r - 10;
+          const a = -135 + i * 22.5;
+          const isMajor = i % 3 === 0;
+          const outer = polar(a, r - 3);
+          const inner = polar(a, r - (isMajor ? 11 : 7));
           return (
             <line
               key={i}
-              x1={hub + ri * Math.cos(a)}
-              y1={hub + ri * Math.sin(a)}
-              x2={hub + (r - 4) * Math.cos(a)}
-              y2={hub + (r - 4) * Math.sin(a)}
-              stroke={i % 3 === 0 ? "#906030" : "#382010"}
-              strokeWidth={i % 3 === 0 ? 2 : 1}
+              x1={outer.x} y1={outer.y}
+              x2={inner.x} y2={inner.y}
+              stroke={isMajor ? "#b08840" : "#705025"}
+              strokeWidth={isMajor ? 1.5 : 1}
             />
           );
         })}
+
+        {/* Needle */}
         <line
-          x1={hub + 7 * Math.cos(((angle - 90) * Math.PI) / 180)}
-          y1={hub + 7 * Math.sin(((angle - 90) * Math.PI) / 180)}
-          x2={hub + (r - 6) * Math.cos(((angle - 90) * Math.PI) / 180)}
-          y2={hub + (r - 6) * Math.sin(((angle - 90) * Math.PI) / 180)}
-          stroke={warn ? "#ff2010" : color}
-          strokeWidth={2.5}
+          x1={nx1} y1={ny1}
+          x2={nx2} y2={ny2}
+          stroke={warn ? "#ff3010" : color}
+          strokeWidth={2}
           strokeLinecap="round"
+          style={{ filter: warn ? `drop-shadow(0 0 3px ${color}88)` : undefined }}
         />
-        <circle cx={hub} cy={hub} r={4.5} fill={warn ? "#ff2010" : color} />
+
+        {/* Hub dot */}
+        <circle cx={hub} cy={hub} r={3.5} fill={warn ? "#ff3010" : color} />
+        <circle cx={hub} cy={hub} r={1.5} fill="rgba(255,255,255,0.3)" />
       </svg>
-      <div style={{ fontSize: 10, fontWeight: 700, color: warn ? "#ff7050" : "#c09850" }}>
+
+      {/* Numeric value */}
+      <div
+        style={{
+          fontFamily: "var(--font-mono, monospace)",
+          fontSize: 11,
+          fontWeight: 700,
+          color: warn ? "#ff7050" : "#c09850",
+          textShadow: warn ? "0 0 8px rgba(255, 80, 30, 0.5)" : "none",
+          letterSpacing: "0.02em",
+        }}
+      >
         {v.toFixed(v < 100 ? 1 : 0)}
       </div>
-      <div style={{ fontSize: 8, color: "#504030", letterSpacing: 0.5 }}>{label}</div>
+
+      {/* Label */}
+      <div
+        style={{
+          fontFamily: "var(--font-display, monospace)",
+          fontSize: 8.5,
+          fontWeight: 700,
+          color: "#b89050",
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </div>
     </div>
   );
 }
-

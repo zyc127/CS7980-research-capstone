@@ -180,29 +180,75 @@ rules:
       - left: "global_metrics.tugboat_cargo_distance"
         operator: "<"
         right: 15.0
+      - left: "global_metrics.escort_separation_active"
+        operator: "=="
+        right: 0.0
     logic: "AND"
     action:
-      - type: "set"
+      - type: "clamp"
         target: "agents.tugboat.speed"
-        value: 0.0
+        max_value: 1.5
+      - type: "set"
+        target: "global_metrics.escort_separation_active"
+        value: 1.0
       - type: "spawn_event"
-        event_type: "escort_collision_risk"
+        event_type: "escort_separation_required"
         event_payload:
           distance: "{{global_metrics.tugboat_cargo_distance}}"
+          safe_distance: 25.0
+          speed_limit: 1.5
+          action_required: "reduce_speed_let_escort_reposition"
           severity: "critical"
       - type: "log"
         log_level: "error"
-        log_message: "CRITICAL: Tugboat and cargo ship too close — emergency stop."
+        log_message: "SEPARATION PROTOCOL: Escort too close — tugboat speed limited to 1.5 kn, awaiting safe gap."
     explanation_template: >
-      DANGER: The tugboat is only {{global_metrics.tugboat_cargo_distance}} metres
-      from the cargo ship — well below the safe minimum of 15 metres.
-      Emergency stop activated immediately. At close range, even a small collision
-      between a tugboat and a large vessel can cause serious structural damage
-      and risk capsizing the tugboat.
+      SEPARATION PROTOCOL ACTIVATED. The tugboat is only
+      {{global_metrics.tugboat_cargo_distance}} metres from the cargo ship —
+      below the 15-metre minimum safe clearance.
+      Speed is limited to 1.5 knots so the escort can fall astern and
+      restore a 25-metre gap without a full stop.
+      Real-world procedure (COLREGS Rule 8): reduce to bare steerage way,
+      allow the trailing vessel to reposition, then resume matched speed.
+      Escort tugs work at a stern station 60–100 m astern of the assisted
+      vessel — closing inside 15 m removes all margin to manoeuvre.
     metadata:
       category: "safety"
-      tags: ["collision", "escort", "emergency_stop", "multi-agent"]
-      educational_focus: "What happens when two vessels get dangerously close?"
+      tags: ["collision", "escort", "separation_protocol", "COLREGS", "multi-agent"]
+      educational_focus: "What is the COLREGS separation protocol, and how do escort tugs maintain safe station?"
+
+  - id: "escort_separation_cleared"
+    priority: 55
+    conditions:
+      - left: "global_metrics.escort_separation_active"
+        operator: "=="
+        right: 1.0
+      - left: "global_metrics.tugboat_cargo_distance"
+        operator: ">"
+        right: 25.0
+    logic: "AND"
+    action:
+      - type: "set"
+        target: "global_metrics.escort_separation_active"
+        value: 0.0
+      - type: "spawn_event"
+        event_type: "escort_separation_cleared"
+        event_payload:
+          distance: "{{global_metrics.tugboat_cargo_distance}}"
+          severity: "info"
+      - type: "log"
+        log_level: "info"
+        log_message: "Separation restored — escort back at safe station. Normal operations resume."
+    explanation_template: >
+      Safe separation has been restored.
+      The escort tug is now {{global_metrics.tugboat_cargo_distance}} metres astern —
+      above the 25-metre safe minimum. You may resume your assigned speed.
+      Maintaining a 25–80 metre stern station gives the escort full authority to
+      push or pull the cargo ship if it begins to drift off course or lose steerage.
+    metadata:
+      category: "safety"
+      tags: ["escort", "separation_cleared", "station_keeping", "recovery"]
+      educational_focus: "How does an escort tug confirm it is safe to resume normal speed after a separation event?"
 
   - id: "cargo_ship_speed_mismatch"
     priority: 40
@@ -367,14 +413,14 @@ rules:
         right: "harbour_entry"
     logic: "AND"
     action:
-      - type: "set"
+      - type: "clamp"
         target: "agents.tugboat.speed"
-        value: 4.0
+        max_value: 4.0
       - type: "trigger_rule"
         rule_id: "request_harbour_guidance"
       - type: "log"
         log_level: "warning"
-        log_message: "Fog alert in harbour entry — speed set to 4 knots, guidance requested."
+        log_message: "Fog alert in harbour entry — speed clamped to 4 knots, guidance requested."
     explanation_template: >
       A fog alert is active in the harbour entry zone. Speed has been reduced to
       4 knots and harbour guidance has been requested. Radar and radio contact
@@ -465,6 +511,9 @@ rules:
       - left: "global_metrics.anchor_deployed"
         operator: "=="
         right: 0.0
+      - left: "global_metrics.engine_status"
+        operator: "=="
+        right: 0.0
     logic: "AND"
     action:
       - type: "set"
@@ -492,6 +541,34 @@ rules:
       tags: ["anchor", "mayday", "chained_rule", "emergency_stop"]
       educational_focus: "How does an emergency anchor work, and when is it used?"
 
+  - id: "engine_offline_lock"
+    priority: 99
+    conditions:
+      - left: "global_metrics.engine_status"
+        operator: "=="
+        right: 0.0
+      - left: "global_metrics.anchor_deployed"
+        operator: "=="
+        right: 1.0
+    logic: "AND"
+    action:
+      - type: "set"
+        target: "agents.tugboat.speed"
+        value: 0.0
+      - type: "log"
+        log_level: "error"
+        log_message: "Engine offline — tugboat immobilised by anchor."
+    explanation_template: >
+      The engine remains offline and the anchor is holding the vessel in place.
+      The crew is maintaining a Mayday watch on VHF Channel 16 while awaiting
+      tow assistance. This is the correct protocol when a vessel loses propulsion
+      in a busy harbour — anchoring prevents uncontrolled drifting into other ships
+      or structures. A harbour tug is now en route to assist.
+    metadata:
+      category: "emergency"
+      tags: ["engine_failure", "anchor", "mayday", "immobilised"]
+      educational_focus: "What is the correct protocol while awaiting rescue after engine failure?"
+
   - id: "collision_risk_multi_vessel"
     priority: 90
     conditions:
@@ -500,14 +577,14 @@ rules:
         right: 10.0
     logic: "AND"
     action:
-      - type: "set"
+      - type: "clamp"
         target: "agents.tugboat.speed"
-        value: 0.0
-      - type: "set"
+        max_value: 0.0
+      - type: "clamp"
         target: "agents.cargo_ship.speed"
-        value: 0.0
+        max_value: 0.0
       - type: "set"
-        target: "global_metrics.collision_risk"
+        target: "global_metrics.escort_separation_active"
         value: 1.0
       - type: "spawn_event"
         event_type: "multi_vessel_collision_avoidance"
@@ -518,13 +595,14 @@ rules:
           severity: "critical"
       - type: "log"
         log_level: "error"
-        log_message: "COLLISION RISK: Both vessels stopped. Distance below 10m."
+        log_message: "COLLISION RISK: Both vessels speed-limited to 0. Distance below 10m."
     explanation_template: >
       CRITICAL: Both the tugboat and cargo ship have been stopped automatically.
       At {{global_metrics.tugboat_cargo_distance}} metres apart, a collision is
       imminent if either vessel continues moving. This rule affects BOTH agents
       simultaneously — demonstrating how a single hazardous condition can require
       coordinated decisions across multiple vessels in a harbour system.
+      The escort tug will now work astern to restore safe separation distance.
     metadata:
       category: "emergency"
       tags: ["collision", "multi-agent", "simultaneous_action", "emergency"]

@@ -404,7 +404,10 @@ class RuleEngine:
                     {"field": e.condition.left, "actual_value": e.left_value}
                     for e in condition_evals
                     if e.result
-                ]
+                ],
+                "category": rule.metadata.get("category", "navigation"),
+                "educational_focus": rule.metadata.get("educational_focus", ""),
+                "tags": rule.metadata.get("tags", []),
             },
             effect={
                 "changes": [
