@@ -103,9 +103,19 @@ export type CherryFlower = {
   vx: number;
 };
 
+/** Floating score label ("+10", "-15", "+5 SAFE NAV", etc.) shown as canvas overlay. */
+export type ScorePopup = {
+  id: number;
+  text: string;
+  color: string;
+  /** Left position as percentage of canvas width (0–100). */
+  leftPct: number;
+  /** Top position as percentage of canvas height (0–100). */
+  topPct: number;
+};
+
 export type LocalState = {
   tug: LocalVessel & { rudder: number };
-  escort: LocalVessel;
   cargo: LocalVessel;
   ferry: LocalVessel;
   fishers: LocalVessel[];

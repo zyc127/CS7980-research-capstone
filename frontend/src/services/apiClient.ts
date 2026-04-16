@@ -70,7 +70,15 @@ export function createApiClient(cfg?: Partial<ApiClientConfig>) {
 
     async step(
       sessionId: string,
-      body: { target_speed?: number; target_heading?: number; emergency_stop?: boolean },
+      body: {
+        target_speed?: number;
+        target_heading?: number;
+        emergency_stop?: boolean;
+        tug_position_x?: number;
+        tug_position_y?: number;
+        cargo_position_x?: number;
+        cargo_position_y?: number;
+      },
     ): Promise<StepResponse> {
       const r = await fetch(joinUrl(baseUrl, `/sessions/${encodeURIComponent(sessionId)}/step`), {
         method: "POST",

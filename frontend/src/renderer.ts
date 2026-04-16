@@ -4,9 +4,8 @@ import {
   DOCK_A_CENTER_X,
   DOCK_B_CENTER_X,
   DOCK_WATERLINE_Y,
-  MOORED_SHIPS,
   PATH_END_X,
-  PORT_BASIN_START_X,
+  START_PORT_X,
   WATER_ROCKS,
   WEATHER_CFG,
   type WeatherKey,
@@ -18,8 +17,8 @@ export function render(ctx: CanvasRenderingContext2D, ls: LocalState, weather: W
   // Camera shake
   ctx.save();
   ctx.translate(shake.x, shake.y);
-  // Horizon: a bit lower → more water area below (longer “sea” on screen)
-  const horizY = CH * 0.36;
+  // Horizon: lower → more sky/mountain space above
+  const horizY = CH * 0.44;
   const toS = (wx: number, wy: number) => ({ x: wx - ls.cam.x + CW / 2, y: wy - ls.cam.y + CH / 2 });
 
   // Sky
@@ -990,7 +989,50 @@ export function render(ctx: CanvasRenderingContext2D, ls: LocalState, weather: W
     ctx.stroke();
   });
 
-  // Zone bands (no separate “docking zone” strip — two docks are landmarks below)
+  // ── Fog zone overlay (x 4500–7500): misty grey wash over water ──────────
+  {
+    const { x: fzx1 } = toS(4500, horizY);
+    const { x: fzx2 } = toS(7500, horizY);
+    if (fzx2 > 0 && fzx1 < CW) {
+      const left  = Math.max(0, fzx1);
+      const right = Math.min(CW, fzx2);
+      // Soft grey fog fill
+      const fogFill = ctx.createLinearGradient(left, horizY, right, horizY);
+      fogFill.addColorStop(0,   "rgba(160,180,195,0)");
+      fogFill.addColorStop(0.1, "rgba(160,180,195,0.18)");
+      fogFill.addColorStop(0.5, "rgba(160,180,195,0.22)");
+      fogFill.addColorStop(0.9, "rgba(160,180,195,0.18)");
+      fogFill.addColorStop(1,   "rgba(160,180,195,0)");
+      ctx.fillStyle = fogFill;
+      ctx.fillRect(left, horizY, right - left, CH - horizY);
+      // Entry border
+      if (fzx1 > 0 && fzx1 < CW) {
+        ctx.strokeStyle = "rgba(140,165,185,0.55)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 5]);
+        ctx.beginPath(); ctx.moveTo(fzx1, horizY); ctx.lineTo(fzx1, CH); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = "rgba(140,165,185,0.75)";
+        ctx.font = "bold 9px sans-serif";
+        ctx.textAlign = "left";
+        ctx.fillText("~ FOG ZONE ~", Math.max(4, fzx1 + 5), horizY + 15);
+      }
+      // Exit border
+      if (fzx2 > 0 && fzx2 < CW) {
+        ctx.strokeStyle = "rgba(140,165,185,0.4)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([6, 5]);
+        ctx.beginPath(); ctx.moveTo(fzx2, horizY); ctx.lineTo(fzx2, CH); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = "rgba(140,165,185,0.55)";
+        ctx.font = "9px sans-serif";
+        ctx.textAlign = "left";
+        ctx.fillText("FOG CLEARS", Math.max(4, fzx2 + 5), horizY + 15);
+      }
+    }
+  }
+
+  // Zone bands (no separate "docking zone" strip — two docks are landmarks below)
   [
     { wx: 0, w: 4500, col: "rgba(50,200,90,0.07)", brd: "rgba(50,200,90,0.35)", lbl: "OPEN WATER" },
     { wx: 4500, w: 3700, col: "rgba(60,160,220,0.06)", brd: "rgba(60,160,220,0.32)", lbl: "SEA LANES" },
@@ -1401,295 +1443,472 @@ export function render(ctx: CanvasRenderingContext2D, ls: LocalState, weather: W
   drawDock(DOCK_A_CENTER_X, "DOCK A", targetDockX === DOCK_A_CENTER_X);
   drawDock(DOCK_B_CENTER_X, "DOCK B", targetDockX === DOCK_B_CENTER_X);
 
-  ctx.restore(); // end dock clip
-
-  // Port basin — after sea lanes, water channel ends at industrial quay (world X ≥ PORT_BASIN_START_X)
+  // ── Departure Marina (start port at START_PORT_X) ─────────────────────
   {
-    const { x: px0 } = toS(PORT_BASIN_START_X, horizY);
-    const { x: px1 } = toS(PATH_END_X + 200, horizY);
-    const left = Math.max(0, Math.min(px0, px1));
-    const right = Math.min(CW, Math.max(px0, px1));
-    if (right > 0 && left < CW) {
-      const portGrad = ctx.createLinearGradient(left, horizY, right, CH);
-      portGrad.addColorStop(0, "rgba(35,42,52,0.72)");
-      portGrad.addColorStop(1, "rgba(22,28,36,0.88)");
-      ctx.fillStyle = portGrad;
-      ctx.fillRect(left, horizY, right - left, CH - horizY);
-      // Quay wall
-      const qy = toS(PORT_BASIN_START_X + 80, DOCK_WATERLINE_Y).y;
-      ctx.fillStyle = "#4a4038";
-      ctx.fillRect(left, qy - 4, right - left, 10);
-      ctx.strokeStyle = "rgba(255,255,255,0.12)";
+    const BY = horizY;
+    const PH = 22;           // pier height (px, same as docks)
+    const PILE_H = 20;
+    const MARINA_W = 160;    // total pier width
+    const { x: mx } = toS(START_PORT_X, 0);
+    const mx0 = mx - MARINA_W / 2;
+    const mx1 = mx + MARINA_W / 2;
+
+    if (mx1 > -80 && mx0 < CW + 80) {
+      // ── Pier platform ──────────────────────────────────────────────
+      const pG = ctx.createLinearGradient(mx0, BY, mx0, BY + PH);
+      pG.addColorStop(0,    "#5c6e58");
+      pG.addColorStop(0.45, "#44543e");
+      pG.addColorStop(1,    "#2a3424");
+      ctx.fillStyle = pG;
+      ctx.fillRect(mx0, BY, MARINA_W, PH);
+
+      // Shore highlight
+      ctx.fillStyle = "rgba(180,210,140,0.35)";
+      ctx.fillRect(mx0, BY, MARINA_W, 2);
+
+      // Plank seams
+      ctx.strokeStyle = "rgba(0,0,0,0.12)";
       ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(left, qy);
-      ctx.lineTo(right, qy);
-      ctx.stroke();
-      // City / crane silhouettes along quay
-      for (let i = 0; i < 14; i++) {
-        const wx = PORT_BASIN_START_X + 120 + i * 220 + ((i * 97) % 80);
-        const { x: sx, y: sy } = toS(wx, DOCK_WATERLINE_Y);
-        if (sx < -40 || sx > CW + 40) continue;
-        const h = 28 + (i % 5) * 10;
-        ctx.fillStyle = i % 3 === 0 ? "#2a3038" : "#323a44";
-        ctx.fillRect(sx - 16, sy - h - 8, 32, h);
-        if (i % 4 === 0) {
-          ctx.fillStyle = "#3a4048";
-          ctx.fillRect(sx + 8, sy - h - 38, 4, 34);
-          ctx.beginPath();
-          ctx.moveTo(sx + 10, sy - h - 38);
-          ctx.lineTo(sx + 28, sy - h - 28);
-          ctx.lineTo(sx + 10, sy - h - 20);
-          ctx.fill();
-        }
-      }
-      const midPort = toS((PORT_BASIN_START_X + PATH_END_X) / 2, DOCK_WATERLINE_Y - 120);
-      if (midPort.x > -80 && midPort.x < CW + 80) {
-        ctx.fillStyle = "rgba(255,200,120,0.95)";
-        ctx.font = "bold 13px sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText("PORT — end of channel", midPort.x, midPort.y);
+      ctx.setLineDash([]);
+      for (let lx = mx0 + 10; lx < mx1; lx += 10) {
+        ctx.beginPath(); ctx.moveTo(lx, BY + 2); ctx.lineTo(lx, BY + PH - 3); ctx.stroke();
       }
 
-      // ── Moored ships alongside the port quay ─────────────────────────
-      // Drawn directly in world→screen space (no rotation transform)
-      // Ship north side always abuts the quay wall at y = DOCK_WATERLINE_Y
-      MOORED_SHIPS.forEach(({ cx, bowLen, sternLen, hw, type }) => {
-        const northY = DOCK_WATERLINE_Y;                 // world y of quay / ship north edge
-        const southY = northY + hw * 2;                  // world y of ship south edge
-        const bowX   = cx + bowLen;                      // world x of bow  (east)
-        const sternX = cx - sternLen;                    // world x of stern (west)
-        const noseLen = hw * 0.9;                        // bow taper length
-
-        // Screen coords for corners
-        const bx  = toS(bowX,        (northY + southY) / 2).x;  // bow tip x
-        const stx = toS(sternX,       northY).x;                  // stern x
-        const ny  = toS(bowX,         northY).y;                  // north edge y
-        const sy  = toS(bowX,         southY).y;                  // south edge y
-        const midY = (ny + sy) / 2;
-        const totalW = bx - stx;
-
-        if (bx < -20 || stx > CW + 20 || sy < horizY || ny > CH + 20) return;
-
-        ctx.save();
-        ctx.beginPath(); // hull clip
-        ctx.moveTo(bx, midY);               // bow tip
-        ctx.lineTo(bx - noseLen, ny);       // bow shoulder north
-        ctx.lineTo(stx, ny);                // stern north
-        ctx.lineTo(stx, sy);                // stern south
-        ctx.lineTo(bx - noseLen, sy);       // bow shoulder south
-        ctx.closePath();
-        ctx.clip();
-
-        // ── Hull gradient (side-to-side shadow) ───────────────────
-        const hullColors = {
-          bulk:   ["#523028", "#7a4838", "#523028"] as const,
-          tanker: ["#1e2228", "#2e3440", "#1e2228"] as const,
-          cruise: ["#b8d0e0", "#dceef8", "#b8d0e0"] as const,
-        };
-        const hc = hullColors[type];
-        const hullG = ctx.createLinearGradient(0, ny, 0, sy);
-        hullG.addColorStop(0,   hc[0]);
-        hullG.addColorStop(0.5, hc[1]);
-        hullG.addColorStop(1,   hc[0]);
-        ctx.fillStyle = hullG;
-        ctx.fillRect(stx, ny, totalW + noseLen, sy - ny);
-
-        // ── Type-specific deck detail ──────────────────────────────
-        if (type === "bulk") {
-          // Rust-red waterline band
-          ctx.fillStyle = "#8a3820";
-          ctx.fillRect(stx, midY + (sy - midY) * 0.5, totalW + noseLen, (sy - midY) * 0.5);
-          // Cream-colored deck
-          ctx.fillStyle = "#c8b898";
-          const deckN = ny + (sy - ny) * 0.18;
-          const deckS = sy - (sy - ny) * 0.18;
-          ctx.fillRect(stx + 4, deckN, totalW - 8, deckS - deckN);
-          // Hatch covers (5 rectangular hatches)
-          ctx.fillStyle = "#b0a080";
-          ctx.strokeStyle = "#88785a";
-          ctx.lineWidth = 0.8;
-          const hatchCount = 5;
-          const hatchW = (totalW - 28) / hatchCount - 5;
-          const hatchH = (deckS - deckN) * 0.62;
-          for (let h = 0; h < hatchCount; h++) {
-            const hx = stx + 14 + h * ((totalW - 24) / hatchCount);
-            const hatch_y = deckN + (deckS - deckN - hatchH) / 2;
-            ctx.fillRect(hx, hatch_y, hatchW, hatchH);
-            ctx.strokeRect(hx, hatch_y, hatchW, hatchH);
-            // Coaming edge highlight
-            ctx.fillStyle = "rgba(255,240,200,0.15)";
-            ctx.fillRect(hx + 1, hatch_y + 1, hatchW - 2, 3);
-            ctx.fillStyle = "#b0a080";
-          }
-          // Bridge superstructure at stern (west)
-          const bridgeW = totalW * 0.14;
-          const bridgeX = stx + 4;
-          ctx.fillStyle = "#d4c8a8";
-          ctx.fillRect(bridgeX, deckN, bridgeW, deckS - deckN);
-          ctx.fillStyle = "#a89870";
-          ctx.fillRect(bridgeX + 2, deckN + 2, bridgeW - 4, (deckS - deckN) * 0.4);
-          // Mast
-          ctx.strokeStyle = "rgba(80,60,30,0.7)";
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.moveTo(bowX > cx ? bx - 8 : stx + 8, midY);
-          ctx.lineTo(bx - totalW * 0.08, midY);
-          ctx.stroke();
-
-        } else if (type === "tanker") {
-          // Black hull base
-          ctx.fillStyle = "#181c20";
-          ctx.fillRect(stx, ny, totalW + noseLen, sy - ny);
-          // Red bottom band
-          ctx.fillStyle = "#7a2010";
-          ctx.fillRect(stx, midY + (sy - midY) * 0.45, totalW + noseLen, (sy - midY) * 0.55);
-          // Dark gray deck
-          const deckN = ny + (sy - ny) * 0.15;
-          const deckS = sy - (sy - ny) * 0.15;
-          ctx.fillStyle = "#484e58";
-          ctx.fillRect(stx + 4, deckN, totalW - 8, deckS - deckN);
-          // Central pipeline (main feature of a tanker deck)
-          const pipeY = midY - 1;
-          ctx.strokeStyle = "#707880";
-          ctx.lineWidth = 3.5;
-          ctx.beginPath();
-          ctx.moveTo(stx + 20, pipeY);
-          ctx.lineTo(bx - 12, pipeY);
-          ctx.stroke();
-          // Pipe highlight
-          ctx.strokeStyle = "rgba(200,210,220,0.35)";
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(stx + 20, pipeY - 1);
-          ctx.lineTo(bx - 12, pipeY - 1);
-          ctx.stroke();
-          // Manifold T-crossing in the middle
-          const manX = stx + totalW * 0.48;
-          ctx.fillStyle = "#606870";
-          ctx.fillRect(manX - 5, midY - 5, 10, 10);
-          ctx.strokeStyle = "#888e98";
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.moveTo(manX, deckN + 2);
-          ctx.lineTo(manX, deckS - 2);
-          ctx.stroke();
-          // Pump stations
-          [0.25, 0.75].forEach((t) => {
-            const px = stx + totalW * t;
-            ctx.fillStyle = "#505860";
-            ctx.fillRect(px - 3, midY - 3, 6, 6);
-          });
-          // Bridge at stern
-          ctx.fillStyle = "#3a4050";
-          ctx.fillRect(stx + 3, deckN, totalW * 0.13, deckS - deckN);
-          ctx.fillStyle = "#505868";
-          ctx.fillRect(stx + 5, deckN + 2, totalW * 0.09, (deckS - deckN) * 0.5);
-
-        } else {
-          // ── Cruise liner ─────────────────────────────────────────
-          // Bright white hull
-          ctx.fillStyle = "#e8ecf0";
-          ctx.fillRect(stx, ny, totalW + noseLen, sy - ny);
-          // Royal blue waterline band
-          ctx.fillStyle = "#1848a8";
-          ctx.fillRect(stx, midY + (sy - midY) * 0.5, totalW + noseLen, (sy - midY) * 0.5);
-          // Lido deck (light blue pool)
-          const deckH = sy - ny;
-          ctx.fillStyle = "#c8e0f0";
-          ctx.fillRect(stx + totalW * 0.15, ny + deckH * 0.22, totalW * 0.55, deckH * 0.56);
-          // Pool
-          ctx.fillStyle = "#4888c8";
-          ctx.fillRect(stx + totalW * 0.30, ny + deckH * 0.32, totalW * 0.22, deckH * 0.36);
-          // Window strip along each side (portholes seen from above as a stripe)
-          ctx.fillStyle = "rgba(100,160,220,0.40)";
-          ctx.fillRect(stx + 2, ny + deckH * 0.06, totalW - 8, deckH * 0.10);
-          ctx.fillRect(stx + 2, sy - deckH * 0.16, totalW - 8, deckH * 0.10);
-          // Funnels at stern (two stacks)
-          [0.12, 0.22].forEach((t, i) => {
-            const fx = stx + totalW * t;
-            ctx.fillStyle = "#c03028";
-            ctx.beginPath();
-            ctx.ellipse(fx, midY + (i - 0.5) * deckH * 0.28, 7, 4, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = "#e84030";
-            ctx.beginPath();
-            ctx.ellipse(fx - 1, midY + (i - 0.5) * deckH * 0.28 - 1, 3.5, 2, 0, 0, Math.PI * 2);
-            ctx.fill();
-          });
-          // Helipad circle at bow
-          ctx.strokeStyle = "rgba(255,240,60,0.7)";
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.arc(bx - noseLen * 1.2, midY, deckH * 0.18, 0, Math.PI * 2);
-          ctx.stroke();
-          // H marking on helipad
-          ctx.strokeStyle = "rgba(255,240,60,0.55)";
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(bx - noseLen * 1.2 - 5, midY - 5);
-          ctx.lineTo(bx - noseLen * 1.2 - 5, midY + 5);
-          ctx.moveTo(bx - noseLen * 1.2 + 5, midY - 5);
-          ctx.lineTo(bx - noseLen * 1.2 + 5, midY + 5);
-          ctx.moveTo(bx - noseLen * 1.2 - 5, midY);
-          ctx.lineTo(bx - noseLen * 1.2 + 5, midY);
-          ctx.stroke();
+      // Yellow/black safety stripe at water edge
+      ctx.fillStyle = "rgba(5,8,15,0.6)";
+      ctx.fillRect(mx0, BY + PH - 5, MARINA_W, 5);
+      let stripeOn = true;
+      for (let lx = mx0; lx < mx1; lx += 7) {
+        if (stripeOn) {
+          ctx.fillStyle = "rgba(220,188,0,0.70)";
+          ctx.fillRect(lx, BY + PH - 5, Math.min(7, mx1 - lx), 5);
         }
+        stripeOn = !stripeOn;
+      }
 
-        ctx.restore(); // end hull clip
-
-        // Hull outline
-        ctx.save();
-        ctx.strokeStyle = type === "cruise" ? "rgba(40,80,140,0.6)" : "rgba(0,0,0,0.45)";
-        ctx.lineWidth = 1.5;
+      // Pilings
+      for (let px = mx0 + 14; px < mx1 - 4; px += 20) {
+        ctx.fillStyle = "#1c2a34";
+        ctx.fillRect(px - 4, BY + PH, 8, PILE_H);
+        ctx.fillStyle = "#283a46";
+        ctx.fillRect(px - 5, BY + PH, 10, 4);
+        ctx.fillStyle = "rgba(80,120,140,0.30)";
+        ctx.fillRect(px - 4, BY + PH + 9, 8, 2); // tide mark
+        // Fender
         ctx.beginPath();
-        ctx.moveTo(bx, midY);
-        ctx.lineTo(bx - noseLen, ny);
-        ctx.lineTo(stx, ny);
-        ctx.lineTo(stx, sy);
-        ctx.lineTo(bx - noseLen, sy);
-        ctx.closePath();
-        ctx.stroke();
+        ctx.ellipse(px, BY + PH + 3, 3.5, 6, 0, 0, Math.PI * 2);
+        ctx.fillStyle = "#1c2420"; ctx.fill();
+      }
 
-        // Mooring lines to quay (from bow and stern)
-        ctx.strokeStyle = "rgba(180,155,90,0.60)";
-        ctx.lineWidth = 1;
-        ctx.setLineDash([3, 3]);
-        [[bx - noseLen * 0.5, ny], [stx + totalW * 0.1, ny]].forEach(([lx, ly]) => {
-          ctx.beginPath();
-          ctx.moveTo(lx, ly);
-          ctx.lineTo(lx, ny - 8);
-          ctx.stroke();
-        });
-        ctx.setLineDash([]);
-        ctx.restore();
+      // Bollards
+      for (let bx = mx0 + 16; bx < mx1 - 8; bx += 34) {
+        ctx.fillStyle = "#7c8c60";
+        ctx.fillRect(bx - 3, BY + PH - 11, 6, 11);
+        ctx.beginPath();
+        ctx.ellipse(bx, BY + PH - 11, 4.5, 2.8, 0, 0, Math.PI * 2);
+        ctx.fillStyle = "#a0b080"; ctx.fill();
+      }
 
-        // Ship label (south of ship)
-        const label = type === "bulk" ? "BULK CARRIER" : type === "tanker" ? "TANKER" : "CRUISE LINER";
-        ctx.fillStyle = "rgba(210,195,140,0.75)";
-        ctx.font = "bold 9px sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText(label, (bx + stx) / 2, sy + 13);
-      });
+      // Dock lights (green tint — departure)
+      for (let lx = mx0 + 24; lx < mx1 - 8; lx += 42) {
+        ctx.beginPath(); ctx.arc(lx, BY + 5, 2.2, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(140,230,120,0.95)"; ctx.fill();
+        ctx.beginPath(); ctx.arc(lx, BY + 5, 7, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(100,200,80,0.14)"; ctx.fill();
+      }
+
+      // Shore rim (green accent = departure / safe)
+      ctx.strokeStyle = "rgba(120,200,90,0.55)";
+      ctx.lineWidth = 1.5; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(mx0, BY); ctx.lineTo(mx1, BY); ctx.stroke();
+      ctx.strokeStyle = "rgba(0,0,0,0.60)";
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(mx0, BY + PH); ctx.lineTo(mx1, BY + PH); ctx.stroke();
+
+      // ── Harbormaster hut (left side of pier) ────────────────────────
+      const htX = mx0 + 8;
+      const htW = 36, htH = PH - 4;
+      const htG = ctx.createLinearGradient(htX, BY + 2, htX, BY + 2 + htH);
+      htG.addColorStop(0, "#4a5c40");
+      htG.addColorStop(1, "#323c28");
+      ctx.fillStyle = htG;
+      ctx.fillRect(htX, BY + 2, htW, htH);
+      // Roof peak
+      ctx.fillStyle = "#2e3c24";
+      ctx.beginPath();
+      ctx.moveTo(htX - 2, BY + 2);
+      ctx.lineTo(htX + htW / 2, BY - 6);
+      ctx.lineTo(htX + htW + 2, BY + 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "rgba(100,180,80,0.30)";
+      ctx.beginPath();
+      ctx.moveTo(htX - 2, BY + 2);
+      ctx.lineTo(htX + htW / 2, BY - 6);
+      ctx.lineTo(htX + htW * 0.3, BY + 2);
+      ctx.closePath();
+      ctx.fill();
+      // Window
+      ctx.fillStyle = "rgba(180,230,255,0.45)";
+      ctx.fillRect(htX + 10, BY + 5, 10, 6);
+      ctx.strokeStyle = "rgba(60,80,100,0.4)";
+      ctx.lineWidth = 0.5; ctx.strokeRect(htX + 10, BY + 5, 10, 6);
+      // Door
+      ctx.fillStyle = "rgba(0,0,0,0.50)";
+      ctx.fillRect(htX + htW - 12, BY + htH - 8, 8, 8);
+      // Hut label
+      ctx.fillStyle = "rgba(200,230,160,0.82)";
+      ctx.font = "bold 5px sans-serif"; ctx.textAlign = "center";
+      ctx.fillText("HARBOUR", htX + htW / 2, BY + 7);
+
+      // ── Flag pole with animated "DEPART" flag ────────────────────────
+      const fpX = mx1 - 12;
+      const fpH = PH + 28;
+      ctx.fillStyle = "#8a9070";
+      ctx.fillRect(fpX - 1, BY + 2 - fpH, 2, fpH);
+      // Waving flag
+      const wave = Math.sin(ls.time * 3.0) * 3.5;
+      const wave2 = Math.sin(ls.time * 3.0 + 1.4) * 2;
+      ctx.fillStyle = "rgba(80,200,80,0.90)";
+      ctx.beginPath();
+      ctx.moveTo(fpX + 1, BY + 2 - fpH);
+      ctx.lineTo(fpX + 18 + wave, BY + 2 - fpH + 5 + wave2);
+      ctx.lineTo(fpX + 16 + wave, BY + 2 - fpH + 10 + wave);
+      ctx.lineTo(fpX + 1, BY + 2 - fpH + 10);
+      ctx.closePath(); ctx.fill();
+      // Highlight stripe
+      ctx.fillStyle = "rgba(150,255,130,0.55)";
+      ctx.beginPath();
+      ctx.moveTo(fpX + 1, BY + 2 - fpH);
+      ctx.lineTo(fpX + 18 + wave, BY + 2 - fpH + 5 + wave2);
+      ctx.lineTo(fpX + 1, BY + 2 - fpH + 3);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#c0d890";
+      ctx.beginPath(); ctx.arc(fpX, BY + 2 - fpH - 2, 2, 0, Math.PI * 2); ctx.fill();
+
+      // ── "DEPARTURE PORT" label above pier ───────────────────────────
+      const labelX = mx;
+      const labelY = BY - 14;
+      if (labelX > -60 && labelX < CW + 60) {
+        ctx.fillStyle = "rgba(160,230,120,0.95)";
+        ctx.font = "bold 8px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText("DEPARTURE PORT", labelX, labelY);
+      }
+
+      // ── Green navigation light at pier end ──────────────────────────
+      const navX = mx1 - 4;
+      if (navX > -10 && navX < CW + 10) {
+        ctx.fillStyle = "#2e3c28";
+        ctx.fillRect(navX - 2, BY + 2, 3, PH - 2);
+        const pulse = 0.7 + Math.sin(ls.time * 3.5) * 0.3;
+        ctx.beginPath(); ctx.arc(navX, BY + 3, 3, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(30,220,80,${pulse})`; ctx.fill();
+        ctx.beginPath(); ctx.arc(navX, BY + 3, 8, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(20,200,60,${pulse * 0.15})`; ctx.fill();
+      }
     }
   }
 
-  // Channel end / stop line
+  ctx.restore(); // end dock clip
+
+
+  // ── Harbor entrance scene — lighthouse, gate, authority building, buoys, berth ──
   {
-    const { x: ex } = toS(PATH_END_X, DOCK_WATERLINE_Y);
-    if (ex > -20 && ex < CW + 20) {
-      ctx.strokeStyle = "rgba(255,220,80,0.85)";
-      ctx.lineWidth = 2;
-      ctx.setLineDash([8, 6]);
-      ctx.beginPath();
-      ctx.moveTo(ex, horizY + 8);
-      ctx.lineTo(ex, CH - 6);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = "rgba(255,220,80,0.9)";
-      ctx.font = "bold 9px sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("STOP", ex, horizY + 22);
+    const slowPulse = 0.5 + Math.sin(ls.time * 2.6) * 0.5;
+    const fastPulse = 0.5 + Math.sin(ls.time * 5.2) * 0.5;
+
+    // ── Lighthouse at PATH_END_X - 920 ──────────────────────────────────────
+    {
+      const { x: lx, y: ly } = toS(PATH_END_X - 920, DOCK_WATERLINE_Y);
+      if (lx > -80 && lx < CW + 80) {
+        // Stone platform base
+        const platG = ctx.createRadialGradient(lx, ly - 5, 2, lx, ly - 5, 22);
+        platG.addColorStop(0, "#a09888"); platG.addColorStop(1, "#706860");
+        ctx.fillStyle = platG;
+        ctx.beginPath(); ctx.ellipse(lx, ly - 5, 22, 13, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "rgba(0,0,0,0.20)"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.ellipse(lx, ly - 5, 22, 13, 0, 0, Math.PI * 2); ctx.stroke();
+
+        // Tower outer ring (white masonry)
+        ctx.beginPath(); ctx.arc(lx, ly - 5, 13, 0, Math.PI * 2);
+        ctx.fillStyle = "#f0ece0"; ctx.fill();
+        // Red horizontal stripe band
+        ctx.beginPath(); ctx.arc(lx, ly - 5, 13, 0, Math.PI * 2);
+        ctx.strokeStyle = "#c83020"; ctx.lineWidth = 5; ctx.stroke();
+        // Inner white core
+        ctx.beginPath(); ctx.arc(lx, ly - 5, 8, 0, Math.PI * 2);
+        ctx.fillStyle = "#f8f4ea"; ctx.fill();
+        // Lantern room (dark glass ring)
+        ctx.beginPath(); ctx.arc(lx, ly - 5, 5, 0, Math.PI * 2);
+        ctx.fillStyle = "#1c2428"; ctx.fill();
+        // Rotating beacon lens
+        const lensCol = `rgba(255,228,80,${0.55 + slowPulse * 0.45})`;
+        ctx.beginPath(); ctx.arc(lx, ly - 5, 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = lensCol; ctx.fill();
+        // Outer glow halo
+        ctx.beginPath(); ctx.arc(lx, ly - 5, 20 + slowPulse * 10, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,230,100,${slowPulse * 0.14})`; ctx.fill();
+        // Sweep beam (rotating arc)
+        const sweepAngle = ls.time * 1.4;
+        ctx.save();
+        ctx.translate(lx, ly - 5);
+        ctx.rotate(sweepAngle);
+        const beamG = ctx.createLinearGradient(0, 0, 60, 0);
+        beamG.addColorStop(0, `rgba(255,240,120,${slowPulse * 0.22})`);
+        beamG.addColorStop(1, "rgba(255,240,120,0)");
+        ctx.fillStyle = beamG;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, 60, -0.25, 0.25); ctx.closePath(); ctx.fill();
+        ctx.restore();
+
+        // Keeper's cottage (east of tower)
+        ctx.fillStyle = "#e8dcc8";
+        ctx.fillRect(lx + 14, ly - 14, 28, 18);
+        // Terracotta roof
+        ctx.fillStyle = "#b85c3a";
+        ctx.beginPath(); ctx.moveTo(lx + 12, ly - 14); ctx.lineTo(lx + 28, ly - 24);
+        ctx.lineTo(lx + 44, ly - 14); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "rgba(200,100,60,0.28)";
+        ctx.beginPath(); ctx.moveTo(lx + 12, ly - 14); ctx.lineTo(lx + 28, ly - 24);
+        ctx.lineTo(lx + 14, ly - 14); ctx.closePath(); ctx.fill();
+        // Windows
+        ctx.fillStyle = "rgba(175,235,255,0.52)";
+        ctx.fillRect(lx + 18, ly - 10, 5, 4);
+        ctx.fillRect(lx + 28, ly - 10, 5, 4);
+        ctx.strokeStyle = "rgba(60,90,110,0.35)"; ctx.lineWidth = 0.5;
+        ctx.strokeRect(lx + 18, ly - 10, 5, 4); ctx.strokeRect(lx + 28, ly - 10, 5, 4);
+        // Cottage door
+        ctx.fillStyle = "#4a3010"; ctx.fillRect(lx + 24, ly - 4, 5, 8);
+
+        ctx.fillStyle = "rgba(240,215,145,0.95)";
+        ctx.font = "bold 7px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText("LIGHTHOUSE", lx, ly - 30);
+      }
+    }
+
+    // ── Harbor gate pillars at PATH_END_X - 480 ─────────────────────────────
+    // Two stone pylons mark the formal harbor entrance: red (north) & green (south)
+    {
+      const { x: gx, y: gy } = toS(PATH_END_X - 480, DOCK_WATERLINE_Y);
+      if (gx > -80 && gx < CW + 80) {
+        // North quay-side pylon (on land, above waterline)
+        const pg = ctx.createLinearGradient(gx - 9, gy - 22, gx + 9, gy);
+        pg.addColorStop(0, "#b0a494"); pg.addColorStop(1, "#786c60");
+        ctx.fillStyle = pg;
+        ctx.fillRect(gx - 9, gy - 22, 18, 22);
+        // Stone course lines
+        ctx.strokeStyle = "rgba(0,0,0,0.16)"; ctx.lineWidth = 0.5;
+        [5, 10, 16].forEach(oy => {
+          ctx.beginPath(); ctx.moveTo(gx - 9, gy - 22 + oy); ctx.lineTo(gx + 9, gy - 22 + oy); ctx.stroke();
+        });
+        // Cap stones
+        ctx.fillStyle = "#c8bca8"; ctx.fillRect(gx - 10, gy - 23, 20, 4);
+        // Red navigation light (port entry starboard)
+        const rPulse = 0.5 + Math.sin(ls.time * 3.6) * 0.5;
+        ctx.beginPath(); ctx.arc(gx, gy - 28, 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(238,50,32,${0.6 + rPulse * 0.4})`; ctx.fill();
+        ctx.beginPath(); ctx.arc(gx, gy - 28, 11, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(238,50,32,${rPulse * 0.20})`; ctx.fill();
+
+        // South water-side pylon (in water, below waterline)
+        const wPilG = ctx.createLinearGradient(gx - 8, gy, gx + 8, gy + 32);
+        wPilG.addColorStop(0, "#707870"); wPilG.addColorStop(1, "#4a5248");
+        ctx.fillStyle = wPilG;
+        ctx.fillRect(gx - 8, gy, 16, 32);
+        ctx.fillStyle = "#8a9288"; ctx.fillRect(gx - 9, gy, 18, 5); // cap
+        // Waterline ring stain
+        ctx.strokeStyle = "rgba(130,170,190,0.35)"; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(gx - 9, gy + 14); ctx.lineTo(gx + 9, gy + 14); ctx.stroke();
+        // Green nav light
+        const gPulse = 0.5 + Math.sin(ls.time * 3.6 + 1.2) * 0.5;
+        ctx.beginPath(); ctx.arc(gx, gy + 5, 4, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(48,220,70,${0.6 + gPulse * 0.4})`; ctx.fill();
+        ctx.beginPath(); ctx.arc(gx, gy + 5, 10, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(48,200,70,${gPulse * 0.18})`; ctx.fill();
+
+        ctx.fillStyle = "rgba(255,222,80,0.92)";
+        ctx.font = "bold 7px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText("PORT ENTRY", gx, gy - 34);
+      }
+    }
+
+    // ── Harbor authority building at PATH_END_X - 200 ──────────────────────
+    {
+      const { x: hx, y: hy } = toS(PATH_END_X - 200, DOCK_WATERLINE_Y);
+      if (hx > -100 && hx < CW + 100) {
+        // Main building body
+        const bG = ctx.createLinearGradient(hx - 28, hy - 26, hx + 28, hy);
+        bG.addColorStop(0, "#d4c8a8"); bG.addColorStop(1, "#a89870");
+        ctx.fillStyle = bG; ctx.fillRect(hx - 28, hy - 26, 56, 26);
+        // Gable roof
+        ctx.fillStyle = "#7a5e3a";
+        ctx.beginPath(); ctx.moveTo(hx - 30, hy - 26); ctx.lineTo(hx, hy - 38);
+        ctx.lineTo(hx + 30, hy - 26); ctx.closePath(); ctx.fill();
+        // Roof highlight
+        ctx.fillStyle = "rgba(210,160,90,0.28)";
+        ctx.beginPath(); ctx.moveTo(hx - 30, hy - 26); ctx.lineTo(hx, hy - 38);
+        ctx.lineTo(hx - 4, hy - 26); ctx.closePath(); ctx.fill();
+        // Windows (4)
+        ctx.fillStyle = "rgba(178,235,255,0.52)";
+        [-18, -6, 6, 18].forEach(ox => {
+          ctx.fillRect(hx + ox - 3.5, hy - 19, 7, 6);
+          ctx.strokeStyle = "rgba(70,100,120,0.35)"; ctx.lineWidth = 0.5;
+          ctx.strokeRect(hx + ox - 3.5, hy - 19, 7, 6);
+        });
+        // Door with frame
+        ctx.fillStyle = "#3a2208"; ctx.fillRect(hx - 6, hy - 10, 12, 10);
+        ctx.fillStyle = "rgba(255,200,100,0.32)"; ctx.fillRect(hx - 4, hy - 8, 4, 5);
+        // Door frame
+        ctx.strokeStyle = "#6a5030"; ctx.lineWidth = 1;
+        ctx.strokeRect(hx - 6, hy - 10, 12, 10);
+
+        // Flagpole with waving harbor flag
+        const fpx = hx + 24;
+        ctx.fillStyle = "#9a8870"; ctx.fillRect(fpx - 1, hy - 54, 2, 28);
+        const fw  = Math.sin(ls.time * 3.1) * 3.5;
+        const fw2 = Math.sin(ls.time * 3.1 + 1.5) * 2;
+        // Dark-blue authority flag
+        ctx.fillStyle = "rgba(12,45,140,0.92)";
+        ctx.beginPath();
+        ctx.moveTo(fpx + 1, hy - 54);
+        ctx.lineTo(fpx + 20 + fw,  hy - 47 + fw2);
+        ctx.lineTo(fpx + 18 + fw,  hy - 41 + fw);
+        ctx.lineTo(fpx + 1, hy - 41);
+        ctx.closePath(); ctx.fill();
+        // White diagonal stripe highlight
+        ctx.fillStyle = "rgba(255,255,255,0.52)";
+        ctx.beginPath();
+        ctx.moveTo(fpx + 1, hy - 54); ctx.lineTo(fpx + 20 + fw, hy - 47 + fw2);
+        ctx.lineTo(fpx + 1, hy - 50); ctx.closePath(); ctx.fill();
+        // Finial ball
+        ctx.beginPath(); ctx.arc(fpx, hy - 56, 2.5, 0, Math.PI * 2);
+        ctx.fillStyle = "#f0d040"; ctx.fill();
+
+        ctx.fillStyle = "rgba(250,228,148,0.95)";
+        ctx.font = "bold 6.5px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText("HARBOR AUTHORITY", hx, hy - 42);
+      }
+    }
+
+    // ── Mooring bollards along final berth (PATH_END_X - 220 → PATH_END_X) ──
+    {
+      for (let wx = PATH_END_X - 210; wx <= PATH_END_X; wx += 36) {
+        const { x: bx, y: by } = toS(wx, DOCK_WATERLINE_Y);
+        if (bx < -20 || bx > CW + 20) continue;
+        // Post body
+        ctx.fillStyle = "#6e5c40"; ctx.fillRect(bx - 4, by - 4, 8, 14);
+        // Mushroom cap
+        ctx.beginPath(); ctx.ellipse(bx, by - 4, 7, 4, 0, 0, Math.PI * 2);
+        ctx.fillStyle = "#b0a068"; ctx.fill();
+        ctx.strokeStyle = "rgba(0,0,0,0.30)"; ctx.lineWidth = 0.5; ctx.stroke();
+        // Rubber fender hanging on water face
+        ctx.beginPath(); ctx.ellipse(bx, by + 16, 5, 10, 0, 0, Math.PI * 2);
+        ctx.fillStyle = "#1e2418"; ctx.fill();
+        ctx.strokeStyle = "rgba(50,65,45,0.50)"; ctx.lineWidth = 0.8; ctx.stroke();
+      }
+    }
+
+    // ── Channel approach buoys (green/red pairs) ─────────────────────────────
+    {
+      const buoyDefs = [
+        { wx: PATH_END_X - 780, gDy: 44, rDy: 105 },
+        { wx: PATH_END_X - 420, gDy: 40, rDy:  98 },
+      ];
+      buoyDefs.forEach(({ wx, gDy, rDy }) => {
+        const { x: bx, y: by } = toS(wx, DOCK_WATERLINE_Y);
+        if (bx < -30 || bx > CW + 30) return;
+        const bob = Math.sin(ls.time * 1.7 + wx * 0.006) * 1.8;
+
+        [
+          { dy: gDy, fill: "#26d44e", glow: "rgba(38,210,72,", lbl: "P" },
+          { dy: rDy, fill: "#e43028", glow: "rgba(228,45,35,",  lbl: "S" },
+        ].forEach(({ dy, fill, glow, lbl }) => {
+          const bby = by + dy + bob;
+          // Water rings (wake ripple)
+          [12, 18].forEach((r, ri) => {
+            ctx.beginPath(); ctx.arc(bx, bby, r, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(100,175,215,${0.20 - ri * 0.08})`; ctx.lineWidth = 1.2; ctx.stroke();
+          });
+          // Buoy body
+          ctx.beginPath(); ctx.arc(bx, bby, 6, 0, Math.PI * 2);
+          ctx.fillStyle = fill; ctx.fill();
+          ctx.strokeStyle = "rgba(0,0,0,0.28)"; ctx.lineWidth = 1; ctx.stroke();
+          // Mast stick
+          ctx.strokeStyle = "rgba(210,200,150,0.75)"; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(bx, bby - 1); ctx.lineTo(bx, bby - 12); ctx.stroke();
+          // Flashing topmark
+          const bPulse = 0.4 + Math.sin(ls.time * 3.9 + dy * 0.08) * 0.6;
+          ctx.beginPath(); ctx.arc(bx, bby - 12, 3, 0, Math.PI * 2);
+          ctx.fillStyle = glow + (0.5 + bPulse * 0.5) + ")"; ctx.fill();
+          ctx.beginPath(); ctx.arc(bx, bby - 12, 8, 0, Math.PI * 2);
+          ctx.fillStyle = glow + (bPulse * 0.14) + ")"; ctx.fill();
+          // Label
+          ctx.fillStyle = "rgba(215,200,148,0.68)"; ctx.font = "6px sans-serif"; ctx.textAlign = "center";
+          ctx.fillText(lbl, bx, bby + 16);
+        });
+      });
+    }
+
+    // ── Final berth dock face and "DOCK HERE" marker ─────────────────────────
+    {
+      const { x: ex, y: ey } = toS(PATH_END_X, DOCK_WATERLINE_Y);
+      if (ex > -30 && ex < CW + 30) {
+        // Soft approach corridor tint
+        const { x: apx } = toS(PATH_END_X - 1200, DOCK_WATERLINE_Y);
+        const apLeft  = Math.max(0, Math.min(apx, ex));
+        const apRight = Math.min(CW, Math.max(apx, ex));
+        if (apRight > apLeft) {
+          const apFill = ctx.createLinearGradient(apLeft, 0, apRight, 0);
+          apFill.addColorStop(0, "rgba(255,200,60,0)");
+          apFill.addColorStop(0.75, "rgba(255,200,60,0.05)");
+          apFill.addColorStop(1,   "rgba(255,200,60,0.11)");
+          ctx.fillStyle = apFill;
+          ctx.fillRect(apLeft, ey, apRight - apLeft, CH - ey);
+        }
+        // Approach dashed entry line
+        if (apx > 0 && apx < CW) {
+          ctx.strokeStyle = "rgba(255,200,60,0.30)"; ctx.lineWidth = 1;
+          ctx.setLineDash([6, 6]);
+          ctx.beginPath(); ctx.moveTo(apx, ey); ctx.lineTo(apx, CH - 4); ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = "rgba(255,200,60,0.55)"; ctx.font = "8px sans-serif"; ctx.textAlign = "left";
+          ctx.fillText("DOCKING APPROACH", apx + 4, ey + 14);
+        }
+
+        // Dock face — concrete quay cap at berth
+        ctx.fillStyle = "#808878"; ctx.fillRect(ex - 6, ey - 8, 12, 28);
+        // Yellow hazard stripe at edge
+        ctx.fillStyle = "#1a1810"; ctx.fillRect(ex - 6, ey + 14, 12, 6);
+        let strOn = true;
+        for (let sx2 = ex - 6; sx2 < ex + 6; sx2 += 4) {
+          if (strOn) { ctx.fillStyle = "rgba(230,196,0,0.80)"; ctx.fillRect(sx2, ey + 14, 4, 6); }
+          strOn = !strOn;
+        }
+
+        // Berth stop line into water
+        ctx.strokeStyle = "rgba(255,212,52,0.90)"; ctx.lineWidth = 2.5; ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(ex, CH - 4); ctx.stroke();
+
+        // Flashing amber beacons on dock face (world-anchored Y offsets)
+        [ey + 40, ey + 90].forEach(bsy => {
+          ctx.beginPath(); ctx.arc(ex - 8, bsy, 4, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255,212,52,${0.38 + fastPulse * 0.62})`; ctx.fill();
+          ctx.beginPath(); ctx.arc(ex - 8, bsy, 10, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255,190,20,${fastPulse * 0.18})`; ctx.fill();
+          ctx.beginPath(); ctx.arc(ex + 8, bsy, 4, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255,212,52,${0.38 + fastPulse * 0.62})`; ctx.fill();
+          ctx.beginPath(); ctx.arc(ex + 8, bsy, 10, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255,190,20,${fastPulse * 0.18})`; ctx.fill();
+        });
+
+        // "DOCK HERE" sign anchored to berth structure
+        const lbl = "DOCK HERE";
+        ctx.font = "bold 10px sans-serif"; ctx.textAlign = "center";
+        const tw = ctx.measureText(lbl).width + 10;
+        ctx.fillStyle = "rgba(18,12,4,0.80)";
+        ctx.fillRect(ex - tw / 2, ey - 22, tw, 16);
+        ctx.fillStyle = "rgba(255,212,52,1.0)";
+        ctx.fillText(lbl, ex, ey - 10);
+      }
     }
   }
 
@@ -1783,196 +2002,123 @@ export function render(ctx: CanvasRenderingContext2D, ls: LocalState, weather: W
     }
   };
 
-  { const { y: cgy } = toS(ls.cargo.x, ls.cargo.y); if (cgy > horizY) drawShip(ls.cargo.x, ls.cargo.y, ls.cargo.heading, 40, 17, "#2e4e70", "#3a6080", "CARGO", ls.cargo.speed, ls.cargo.sinkT, false); }
   { const { y: fgy } = toS(ls.ferry.x, ls.ferry.y); if (fgy > horizY) drawShip(ls.ferry.x, ls.ferry.y, ls.ferry.heading, 46, 19, "#4a6a8a", "#5a7a9a", "FERRY", ls.ferry.speed, ls.ferry.sinkT, false); }
 
-  // ── Detailed escort / towed cargo ship ──────────────────────────
+  // ── Towed cargo barge (bulk carrier, rigidly towed astern of tug) ──────────
   {
-    const { x: esx, y: esy } = toS(ls.escort.x, ls.escort.y);
-    if (esx > -100 && esx < CW + 100 && esy > horizY && esy < CH + 120) {
+    const { x: cgx, y: cgy } = toS(ls.cargo.x, ls.cargo.y);
+    if (cgx > -120 && cgx < CW + 120 && cgy > horizY && cgy < CH + 120 && !ls.cargo.sunk) {
       ctx.save();
-      ctx.translate(esx, esy);
-      ctx.rotate((ls.escort.heading * Math.PI) / 180);
+      ctx.translate(cgx, cgy);
+      ctx.rotate((ls.cargo.heading * Math.PI) / 180);
 
-      // Wake
-      if (ls.escort.speed > 0.3) {
-        const wk = ctx.createRadialGradient(0, 26, 2, 0, 26, 52);
-        wk.addColorStop(0, "rgba(255,255,255,0.16)");
-        wk.addColorStop(1, "rgba(255,255,255,0)");
-        ctx.fillStyle = wk;
-        ctx.beginPath();
-        ctx.moveTo(0, 22);
-        ctx.lineTo(-36, 70);
-        ctx.lineTo(36, 70);
-        ctx.closePath();
-        ctx.fill();
-      }
-
-      // Main hull — long, flat-sided bulk carrier
-      const hullGrad = ctx.createLinearGradient(-20, -48, 20, 32);
-      hullGrad.addColorStop(0, "#28383a");
-      hullGrad.addColorStop(0.4, "#2e4244");
-      hullGrad.addColorStop(1, "#1a2830");
-      ctx.fillStyle = hullGrad;
-      ctx.beginPath();
-      ctx.moveTo(0, -52);                    // bow tip
-      ctx.quadraticCurveTo(22, -40, 24, -18);
-      ctx.lineTo(24, 32);
-      ctx.quadraticCurveTo(20, 40, 12, 42);
-      ctx.lineTo(-12, 42);
-      ctx.quadraticCurveTo(-20, 40, -24, 32);
-      ctx.lineTo(-24, -18);
-      ctx.quadraticCurveTo(-22, -40, 0, -52);
-      ctx.closePath();
-      ctx.fill();
-
-      // Waterline stripe (contrasting band)
-      ctx.strokeStyle = "#c84820";
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(-23, 18);
-      ctx.lineTo(23, 18);
-      ctx.stroke();
-
-      // Boot topping (anti-fouling red below waterline strip)
-      ctx.fillStyle = "#9a3010";
-      ctx.beginPath();
-      ctx.moveTo(-24, 20);
-      ctx.lineTo(24, 20);
-      ctx.lineTo(22, 36);
-      ctx.quadraticCurveTo(18, 42, 12, 42);
-      ctx.lineTo(-12, 42);
-      ctx.quadraticCurveTo(-18, 42, -22, 36);
-      ctx.closePath();
-      ctx.fill();
-
-      // Deck surface
-      ctx.fillStyle = "#3a4a38";
-      ctx.beginPath();
-      ctx.moveTo(0, -48);
-      ctx.quadraticCurveTo(18, -38, 20, -18);
-      ctx.lineTo(20, 30);
-      ctx.quadraticCurveTo(16, 38, 10, 40);
-      ctx.lineTo(-10, 40);
-      ctx.quadraticCurveTo(-16, 38, -20, 30);
-      ctx.lineTo(-20, -18);
-      ctx.quadraticCurveTo(-18, -38, 0, -48);
-      ctx.closePath();
-      ctx.fill();
-
-      // Deck rail (thin line on both sides)
-      ctx.strokeStyle = "rgba(200,190,160,0.3)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(-19, -16); ctx.lineTo(-19, 28);
-      ctx.moveTo( 19, -16); ctx.lineTo( 19, 28);
-      ctx.stroke();
-
-      // Cargo holds (3 hatches)
-      const hatchPositions = [-30, -8, 14];
-      hatchPositions.forEach((hy) => {
-        // Hatch coaming (raised lip)
-        ctx.fillStyle = "#2a3828";
-        ctx.fillRect(-13, hy - 1, 26, 15);
-        // Hatch cover
-        const hatchGrad = ctx.createLinearGradient(-12, hy, 12, hy + 13);
-        hatchGrad.addColorStop(0, "#3e5040");
-        hatchGrad.addColorStop(1, "#2e3c30");
-        ctx.fillStyle = hatchGrad;
-        ctx.fillRect(-12, hy, 24, 13);
-        // Hatch panel lines
-        ctx.strokeStyle = "rgba(100,120,100,0.5)";
-        ctx.lineWidth = 0.6;
-        ctx.beginPath();
-        ctx.moveTo(0, hy); ctx.lineTo(0, hy + 13);
-        ctx.moveTo(-12, hy + 6); ctx.lineTo(12, hy + 6);
-        ctx.stroke();
-      });
-
-      // Deck cranes (two boom cranes, port & starboard)
-      [[-17, -12], [17, -12], [-17, 10], [17, 10]].forEach(([cx2, cy2]) => {
-        ctx.fillStyle = "#f0c830";
-        ctx.beginPath();
-        ctx.arc(cx2, cy2, 2.2, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = "#e0b820";
-        ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        ctx.moveTo(cx2, cy2);
-        ctx.lineTo(cx2 > 0 ? cx2 + 7 : cx2 - 7, cy2 - 8);
-        ctx.stroke();
-      });
-
-      // Bridge superstructure (aft, toward stern)
-      const bridgeGrad = ctx.createLinearGradient(-10, 22, 10, 38);
-      bridgeGrad.addColorStop(0, "#d8d0c4");
-      bridgeGrad.addColorStop(1, "#b0a898");
-      ctx.fillStyle = bridgeGrad;
-      ctx.strokeStyle = "#6a6050";
-      ctx.lineWidth = 0.8;
-      ctx.beginPath();
-      ctx.roundRect(-10, 22, 20, 16, 1);
-      ctx.fill(); ctx.stroke();
-
-      // Bridge windows row
-      ctx.fillStyle = "#1a2838";
-      ctx.fillRect(-8, 24, 16, 5);
-      ctx.fillStyle = "rgba(120,180,220,0.5)";
-      for (let wi = 0; wi < 4; wi++) {
-        ctx.fillRect(-7 + wi * 4, 24.5, 2.5, 3.8);
-      }
-
-      // Bridge roof
-      ctx.fillStyle = "#c0b8a8";
-      ctx.fillRect(-11, 21, 22, 2);
-
-      // Funnel / smokestack (aft of bridge)
-      ctx.fillStyle = "#1a1a1a";
-      ctx.fillRect(-4, 32, 8, 10);
-      ctx.fillStyle = "#282828";
-      ctx.fillRect(-3, 24, 6, 8);
-      // Funnel band (company colors: yellow)
-      ctx.fillStyle = "#e8c030";
-      ctx.fillRect(-4, 33, 8, 2.5);
-
-      // Foremast (bow area)
-      ctx.strokeStyle = "#5a5040";
-      ctx.lineWidth = 1.5;
+      // Hull — wide rectangular barge (bow at -Y)
+      const cgHullG = ctx.createLinearGradient(-20, -42, 20, 38);
+      cgHullG.addColorStop(0, "#1c2e48");
+      cgHullG.addColorStop(0.4, "#243858");
+      cgHullG.addColorStop(1, "#141e30");
+      ctx.fillStyle = cgHullG;
       ctx.beginPath();
       ctx.moveTo(0, -44);
-      ctx.lineTo(0, -28);
-      ctx.stroke();
-      // Yardarm
+      ctx.quadraticCurveTo(16, -36, 18, -20);
+      ctx.lineTo(18, 28);
+      ctx.quadraticCurveTo(16, 36, 8, 38);
+      ctx.lineTo(-8, 38);
+      ctx.quadraticCurveTo(-16, 36, -18, 28);
+      ctx.lineTo(-18, -20);
+      ctx.quadraticCurveTo(-16, -36, 0, -44);
+      ctx.closePath();
+      ctx.fill();
+
+      // Waterline stripe
+      ctx.strokeStyle = "#b83018";
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.moveTo(-8, -38);
-      ctx.lineTo(8, -38);
+      ctx.moveTo(-17, 14);
+      ctx.lineTo(17, 14);
       ctx.stroke();
 
-      // Navigation lights
-      ctx.fillStyle = "#ff4040"; // port (red)
-      ctx.beginPath(); ctx.arc(-20, -10, 1.8, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#40ff80"; // starboard (green)
-      ctx.beginPath(); ctx.arc(20, -10, 1.8, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#ffff80"; // masthead white
-      ctx.beginPath(); ctx.arc(0, -44, 2, 0, Math.PI * 2); ctx.fill();
+      // Boot topping (anti-fouling below waterline)
+      ctx.fillStyle = "#7a2010";
+      ctx.beginPath();
+      ctx.moveTo(-18, 16);
+      ctx.lineTo(18, 16);
+      ctx.lineTo(16, 30);
+      ctx.quadraticCurveTo(12, 38, 6, 38);
+      ctx.lineTo(-6, 38);
+      ctx.quadraticCurveTo(-12, 38, -16, 30);
+      ctx.closePath();
+      ctx.fill();
 
-      // Bow anchor chain (subtle)
-      ctx.strokeStyle = "rgba(180,170,140,0.35)";
+      // Deck (dark industrial)
+      ctx.fillStyle = "#2a3828";
+      ctx.beginPath();
+      ctx.moveTo(0, -40);
+      ctx.quadraticCurveTo(12, -33, 14, -20);
+      ctx.lineTo(14, 26);
+      ctx.quadraticCurveTo(12, 32, 6, 34);
+      ctx.lineTo(-6, 34);
+      ctx.quadraticCurveTo(-12, 32, -14, 26);
+      ctx.lineTo(-14, -20);
+      ctx.quadraticCurveTo(-12, -33, 0, -40);
+      ctx.closePath();
+      ctx.fill();
+
+      // Cargo hatches (3 rectangular covers)
+      ctx.fillStyle = "#48504a";
+      ctx.strokeStyle = "#5a6055";
+      ctx.lineWidth = 0.8;
+      for (const hy of [-28, -10, 8]) {
+        ctx.beginPath();
+        ctx.roundRect(-10, hy, 20, 12, 1.5);
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      // Hatch highlight lines
+      ctx.strokeStyle = "rgba(160,170,150,0.25)";
+      ctx.lineWidth = 0.5;
+      for (const hy of [-28, -10, 8]) {
+        ctx.beginPath();
+        ctx.moveTo(-9, hy + 1.5);
+        ctx.lineTo(9, hy + 1.5);
+        ctx.stroke();
+      }
+
+      // Deckhouse at stern
+      ctx.fillStyle = "#cec0a8";
+      ctx.strokeStyle = "#5a4e3a";
       ctx.lineWidth = 1;
-      ctx.setLineDash([2, 2]);
       ctx.beginPath();
-      ctx.moveTo(-10, -44); ctx.lineTo(-10, -30);
-      ctx.moveTo( 10, -44); ctx.lineTo( 10, -30);
+      ctx.roundRect(-6, 22, 12, 9, 2);
+      ctx.fill();
       ctx.stroke();
-      ctx.setLineDash([]);
+
+      // Deckhouse windows
+      ctx.fillStyle = "#182030";
+      ctx.fillRect(-4, 24, 8, 3.5);
+      ctx.fillStyle = "rgba(100,180,220,0.4)";
+      ctx.fillRect(-3.5, 24.2, 3, 2.5);
+      ctx.fillRect(1, 24.2, 3, 2.5);
+
+      // Mooring bollards (fore and aft)
+      ctx.fillStyle = "#8a7860";
+      for (const [bx, by] of [[-7, -38], [7, -38], [-7, 34], [7, 34]] as [number, number][]) {
+        ctx.beginPath();
+        ctx.arc(bx, by, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Tow fitting at bow (golden)
+      ctx.fillStyle = "#c89040";
+      ctx.strokeStyle = "#a07030";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(0, -42, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
 
       ctx.restore();
-
-      // Label above ship
-      ctx.fillStyle = "rgba(255,230,120,0.85)";
-      ctx.font = "bold 9px sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("CARGO SHIP", esx, esy - 62);
     }
   }
   ls.fishers.forEach((f) => drawShip(f.x, f.y, f.heading, 22, 9, "#6a5030", "#8a7050", "", f.speed, f.sinkT, true));
@@ -2144,46 +2290,27 @@ export function render(ctx: CanvasRenderingContext2D, ls: LocalState, weather: W
   ctx.restore();
   ctx.restore();
 
-  // Tow line from tug stern to escort bow (only when escort is visible in water)
-  if (!ls.escort.sunk) {
-    const { x: esx, y: esy } = toS(ls.escort.x, ls.escort.y);
-    if (esy > horizY) {
-      const towDist = Math.sqrt((ls.tug.x - ls.escort.x) ** 2 + (ls.tug.y - ls.escort.y) ** 2);
-      const towAlpha = Math.max(0.15, Math.min(0.8, 1 - towDist / 300));
-      ctx.setLineDash([5, 3]);
-      ctx.strokeStyle = `rgba(200,180,120,${towAlpha})`;
-      ctx.lineWidth = 1.5;
+  // Tow rope from tug stern to cargo bow
+  if (!ls.cargo.sunk) {
+    const { x: crx, y: cry } = toS(ls.cargo.x, ls.cargo.y);
+    if (cry > horizY) {
+      ctx.setLineDash([]);
+      ctx.strokeStyle = "rgba(0,0,0,0.28)";
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.moveTo(tx + 1, ty + 1);
+      ctx.lineTo(crx + 1, cry + 1);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(160,120,55,0.92)";
+      ctx.lineWidth = 2.2;
       ctx.beginPath();
       ctx.moveTo(tx, ty);
-      ctx.lineTo(esx, esy);
+      ctx.lineTo(crx, cry);
       ctx.stroke();
-      ctx.setLineDash([]);
     }
   }
 
-  // Distance line
-  const { x: csx, y: csy } = toS(ls.cargo.x, ls.cargo.y);
-  const dist = Math.sqrt((ls.tug.x - ls.cargo.x) ** 2 + (ls.tug.y - ls.cargo.y) ** 2);
-  if (!ls.cargo.sunk && dist < 220 && csy > horizY) {
-    const col =
-      dist < 65
-        ? "rgba(255,50,30,0.7)"
-        : dist < 130
-          ? "rgba(255,180,30,0.5)"
-          : "rgba(80,150,220,0.28)";
-    ctx.setLineDash([4, 4]);
-    ctx.strokeStyle = col;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(tx, ty);
-    ctx.lineTo(csx, csy);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = col;
-    ctx.font = "9px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(`${Math.round(dist)}m`, (tx + csx) / 2, (ty + csy) / 2 - 4);
-  }
+
 
   // Rain
   if (w.rain) {

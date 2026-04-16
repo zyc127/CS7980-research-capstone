@@ -1,6 +1,6 @@
-export const CW = 800;
+export const CW = 1200;
 /** Taller canvas = more vertical “water” to race in (see horizY in renderer). */
-export const CH = 520;
+export const CH = 780;
 
 /** World bounds for local kinematics (longer run along X / Y). */
 export const WORLD_X_MIN = 50;
@@ -15,6 +15,8 @@ export const DOCK_WATERLINE_Y = 756;
 /** Two independent docks along the course (world X, pier faces water). */
 export const DOCK_A_CENTER_X = 3300;
 export const DOCK_B_CENTER_X = 5900;
+/** Starting port — tug always spawns here (world X). */
+export const START_PORT_X = 200;
 /** After berth: water gives way to port basin (world X). */
 export const PORT_BASIN_START_X = 7800;
 /** End of navigable channel — stop & score here. */

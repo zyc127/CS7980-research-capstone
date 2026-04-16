@@ -1,9 +1,9 @@
+import { useEffect, useRef } from "react";
 import { WEATHER_CFG, type WeatherKey } from "../constants";
 
+/** Scenarios exposed as buttons — Fog Nav and Docking are now embedded in the path. */
 const SCENARIOS: Record<string, string> = {
-  default: "Open Water",
-  fog:     "Fog Nav",
-  docking: "Docking",
+  default:   "Open Water",
   emergency: "Eng Fail",
 };
 
@@ -17,6 +17,53 @@ type Props = {
   onReplay: () => void;
   onToggleFpv: () => void;
 };
+
+/** Top-down boat silhouette for the Immersive View button. */
+function BoatSilhouette({ active }: { active: boolean }) {
+  const stroke = active ? "#60f8ff" : "#28c8e0";
+  const fill   = active ? "rgba(0,230,255,0.20)" : "rgba(0,160,200,0.13)";
+  return (
+    <svg width="32" height="20" viewBox="0 0 44 26" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
+      {/* Hull */}
+      <path d="M3 13 L9 3 L35 3 L41 13 L35 23 L9 23 Z" stroke={stroke} strokeWidth="1.8" fill={fill} />
+      {/* Bridge / superstructure */}
+      <rect x="15" y="8" width="13" height="10" rx="2" stroke={stroke} strokeWidth="1.4" fill={active ? "rgba(0,230,255,0.16)" : "rgba(0,160,200,0.10)"} />
+      {/* Bow wake lines */}
+      <path d="M41 10 L44 8 M41 16 L44 18" stroke={stroke} strokeWidth="1.2" strokeLinecap="round" opacity="0.6" />
+    </svg>
+  );
+}
+
+/**
+ * Animated score number. Flashes pink on increase, red+shake on decrease.
+ * Restarts the CSS animation each time the score changes by toggling classes
+ * via a DOM ref (avoids the React key-remount cost on every update).
+ */
+function ScoreValue({ score }: { score: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const prevRef = useRef(score);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (score === prevRef.current) return;
+    const trend = score > prevRef.current ? "scoreValUp" : "scoreValDown";
+    prevRef.current = score;
+
+    const el = ref.current;
+    if (!el) return;
+    // Remove both classes, force reflow, re-add the correct one to restart animation
+    el.classList.remove("scoreValUp", "scoreValDown");
+    void el.offsetWidth;          // reflow triggers animation reset
+    el.classList.add(trend);
+
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      el.classList.remove("scoreValUp", "scoreValDown");
+    }, 700);
+  }, [score]);
+
+  return <div ref={ref} className="statValue">{score}</div>;
+}
 
 /** Ship anchor icon (SVG inline). */
 function AnchorIcon() {
@@ -73,28 +120,27 @@ export function TopBar({ scenario, weather, score, fpv, onScenario, onWeather, o
           ))}
         </div>
 
-        <div className="topBarDivider" />
-
-        <div className="pillRow">
-          <button
-            type="button"
-            onClick={onToggleFpv}
-            className={`pillBtn ${fpv ? "pillBtnActive" : ""}`}
-            title="Toggle first-person bridge view [V]"
-          >
-            {fpv ? "🗺 Map" : "🧭 Bridge"}
-          </button>
-          <button type="button" onClick={onReplay} className="pillBtn" title="Restart same scenario">
-            ↺ Replay
-          </button>
-        </div>
       </div>
 
-      {/* Stats */}
+      {/* Right: Replay · Immersive View · Score */}
       <div className="statPills">
-        <div className="stat">
+        <button type="button" onClick={onReplay} className="replayBtn" title="Restart same scenario">
+          ↺ Replay
+        </button>
+        <div className="topBarDivider" />
+        <button
+          type="button"
+          onClick={onToggleFpv}
+          className={`immersiveBtn ${fpv ? "immersiveBtnActive" : ""}`}
+          title="Toggle immersive bridge view [V]"
+        >
+          <BoatSilhouette active={fpv} />
+          <span>{fpv ? "Back to Game" : "Immersive View"}</span>
+        </button>
+        <div className="topBarDivider" />
+        <div className="stat statScore">
           <div className="statLabel">Score</div>
-          <div className="statValue">{score}</div>
+          <ScoreValue score={score} />
         </div>
       </div>
     </div>

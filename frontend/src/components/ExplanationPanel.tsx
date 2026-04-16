@@ -12,7 +12,7 @@ const CAT_BG: Record<string, string> = {
   emergency:  "rgba(160, 20, 10, 0.22)",
 };
 
-export function ExplanationPanel({ explanations }: { explanations: ExplanationOut[] }) {
+export function ExplanationPanel({ explanations, onClose }: { explanations: ExplanationOut[]; onClose?: () => void }) {
   if (!explanations || !explanations.length) return null;
 
   return (
@@ -28,6 +28,31 @@ export function ExplanationPanel({ explanations }: { explanations: ExplanationOu
         zIndex: 10,
       }}
     >
+      {/* Dismiss button */}
+      {onClose && (
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button
+            onClick={onClose}
+            title="Dismiss logs"
+            style={{
+              background: "rgba(10,6,2,0.82)",
+              border: "1px solid rgba(200,120,40,0.45)",
+              borderRadius: 5,
+              color: "rgba(220,150,70,0.9)",
+              cursor: "pointer",
+              fontSize: 11,
+              fontWeight: 700,
+              fontFamily: "var(--font-display, monospace)",
+              letterSpacing: "0.06em",
+              padding: "3px 10px",
+              backdropFilter: "blur(8px)",
+              WebkitBackdropFilter: "blur(8px)",
+            }}
+          >
+            CLOSE
+          </button>
+        </div>
+      )}
       {explanations.slice(0, 2).map((exp, i) => {
         const cat = (exp.educational_summary?.category as string | undefined) ?? "navigation";
         const col = CAT_COLOR[cat] ?? "#c09850";

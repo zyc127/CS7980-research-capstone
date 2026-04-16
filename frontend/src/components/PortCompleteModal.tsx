@@ -31,9 +31,9 @@ function useCountUp(target: number, durationMs = 1600) {
 
 /** Star rating from score. */
 function stars(score: number) {
-  if (score >= 300) return 3;
-  if (score >= 150) return 2;
-  if (score >= 50)  return 1;
+  if (score >= 100) return 3;
+  if (score >= 50)  return 2;
+  if (score >= 20)  return 1;
   return 0;
 }
 

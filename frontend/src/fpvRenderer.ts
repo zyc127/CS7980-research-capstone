@@ -1,7 +1,7 @@
 /**
  * First-person bridge view — full canvas, wheelhouse overlay + mini-map.
  */
-import { CW, CH, WEATHER_CFG, DOCK_A_CENTER_X, DOCK_B_CENTER_X, PORT_BASIN_START_X, type WeatherKey } from "./constants";
+import { CW, CH, WEATHER_CFG, DOCK_A_CENTER_X, DOCK_B_CENTER_X, PATH_END_X, DOCK_WATERLINE_Y, type WeatherKey } from "./constants";
 import type { CherryFlower, LocalState, LocalVessel } from "./types";
 
 /** 场景专属 HUD 数据，传入 renderFPV 以在第一人称驾驶台覆盖显示。 */
@@ -19,7 +19,7 @@ export type FpvHud = {
 
 // ── Layout ────────────────────────────────────────────────────────────
 const PILLAR_W  = 32;          // side pillar width
-const DASH_TOP  = 330;         // top of dashboard (bottom of scene window)
+const DASH_TOP  = 490;         // top of dashboard (bottom of scene window)
 const HORIZ_Y   = 210;         // horizon line in screen Y
 const SCENE_CX  = CW / 2;     // 400
 const HALF_FOV  = 45;          // ±degrees
@@ -1124,23 +1124,321 @@ function drawHorizonScenery(ctx: CanvasRenderingContext2D, ls: LocalState) {
     ctx.restore();
   });
 
-  // Port basin — exact same world X as top-down renderer
+  // ── Harbor entrance scene — matches top-down renderer ─────────────────────
+
+  // ── Lighthouse at PATH_END_X - 920 ──────────────────────────────────────
   {
-    const bPort = relBearing(ls.tug.x, ls.tug.y, ls.tug.heading, PORT_BASIN_START_X + 300, 756);
-    const portDist = dist2D(ls.tug.x, ls.tug.y, PORT_BASIN_START_X + 300, 756);
-    if (Math.abs(bPort) < HALF_FOV + 14 && portDist < 3000) {
-      const psx = perspX(bPort);
-      const sc2 = Math.max(0.3, Math.min(2, 800 / portDist));
-      const portBaseY = Math.min(HORIZ_Y + (EYE_HEIGHT / portDist) * FOCAL, DASH_TOP - 16);
+    const lhWX = PATH_END_X - 920;
+    const lhDist = dist2D(ls.tug.x, ls.tug.y, lhWX, DOCK_WATERLINE_Y);
+    if (lhDist <= 3000 && lhDist >= 30) {
+      const b = relBearing(ls.tug.x, ls.tug.y, ls.tug.heading, lhWX, DOCK_WATERLINE_Y);
+      if (Math.abs(b) <= HALF_FOV + 12) {
+        const edgeFade = Math.min(1, (HALF_FOV + 12 - Math.abs(b)) / 12);
+        const distFade = Math.max(0.12, 1 - lhDist / 3000);
+        const sc = Math.max(0.12, Math.min(3.0, 500 / lhDist));
+        const lhsx = perspX(b);
+        const lhBaseY = Math.min(HORIZ_Y + (EYE_HEIGHT / lhDist) * FOCAL, DASH_TOP - 16);
+        ctx.save();
+        ctx.globalAlpha = distFade * edgeFade * 0.95;
+
+        const towerH = 90 * sc, towerW = 14 * sc;
+        // Stone platform
+        ctx.fillStyle = "#988070";
+        ctx.fillRect(lhsx - towerW, lhBaseY - 8 * sc, towerW * 2, 8 * sc);
+        // Tower body (slightly tapered)
+        const twG = ctx.createLinearGradient(lhsx - towerW / 2, 0, lhsx + towerW / 2, 0);
+        twG.addColorStop(0, "#c8c0b0"); twG.addColorStop(0.5, "#f0ece2"); twG.addColorStop(1, "#c8c0b0");
+        ctx.fillStyle = twG;
+        ctx.beginPath();
+        ctx.moveTo(lhsx - towerW * 0.5,  lhBaseY - 8 * sc);
+        ctx.lineTo(lhsx - towerW * 0.28, lhBaseY - towerH);
+        ctx.lineTo(lhsx + towerW * 0.28, lhBaseY - towerH);
+        ctx.lineTo(lhsx + towerW * 0.5,  lhBaseY - 8 * sc);
+        ctx.closePath(); ctx.fill();
+        // Red horizontal stripe band
+        ctx.fillStyle = "#c83020";
+        ctx.beginPath();
+        ctx.moveTo(lhsx - towerW * 0.40, lhBaseY - towerH * 0.52);
+        ctx.lineTo(lhsx - towerW * 0.33, lhBaseY - towerH * 0.68);
+        ctx.lineTo(lhsx + towerW * 0.33, lhBaseY - towerH * 0.68);
+        ctx.lineTo(lhsx + towerW * 0.40, lhBaseY - towerH * 0.52);
+        ctx.closePath(); ctx.fill();
+        // Lantern room
+        const lanY = lhBaseY - towerH;
+        ctx.fillStyle = "#1c2428";
+        ctx.fillRect(lhsx - towerW * 0.40, lanY, towerW * 0.80, 6 * sc);
+        // Beacon lens glow
+        const slowPulse = 0.5 + Math.sin(ls.time * 2.6) * 0.5;
+        ctx.beginPath(); ctx.arc(lhsx, lanY + 3 * sc, towerW * 0.28, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,228,80,${0.55 + slowPulse * 0.45})`; ctx.fill();
+        ctx.beginPath(); ctx.arc(lhsx, lanY + 3 * sc, towerW * (0.55 + slowPulse * 0.40), 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,230,100,${slowPulse * 0.22})`; ctx.fill();
+        // Rotating sweep beam
+        const sweepAngle = ls.time * 1.4;
+        ctx.save();
+        ctx.translate(lhsx, lanY + 3 * sc);
+        ctx.rotate(sweepAngle);
+        const beamG = ctx.createLinearGradient(0, 0, 80 * sc, 0);
+        beamG.addColorStop(0, `rgba(255,240,120,${slowPulse * 0.28})`);
+        beamG.addColorStop(1, "rgba(255,240,120,0)");
+        ctx.fillStyle = beamG;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, 80 * sc, -0.22, 0.22); ctx.closePath(); ctx.fill();
+        ctx.restore();
+        // Keeper's cottage
+        const cotW = towerW * 2.4, cotH = towerH * 0.24;
+        ctx.fillStyle = "#e0d4bc";
+        ctx.fillRect(lhsx + towerW * 0.5, lhBaseY - cotH - 8 * sc, cotW, cotH);
+        ctx.fillStyle = "#b85c3a";
+        ctx.beginPath();
+        ctx.moveTo(lhsx + towerW * 0.4,             lhBaseY - cotH - 8 * sc);
+        ctx.lineTo(lhsx + towerW * 0.5 + cotW * 0.5, lhBaseY - cotH - 8 * sc - cotH * 0.6);
+        ctx.lineTo(lhsx + towerW * 0.5 + cotW + 2,   lhBaseY - cotH - 8 * sc);
+        ctx.closePath(); ctx.fill();
+        if (sc > 0.35) {
+          ctx.fillStyle = "rgba(170,230,255,0.45)";
+          ctx.fillRect(lhsx + towerW * 0.70, lhBaseY - cotH * 1.5, cotW * 0.28, cotH * 0.35);
+        }
+        if (sc > 0.40) {
+          ctx.fillStyle = "rgba(240,215,145,0.92)";
+          ctx.font = `bold ${Math.max(7, Math.round(8 * sc))}px sans-serif`;
+          ctx.textAlign = "center";
+          ctx.fillText("LIGHTHOUSE", lhsx, lhBaseY - towerH - 8 * sc);
+        }
+        ctx.restore();
+      }
+    }
+  }
+
+  // ── Harbor gate pillar at PATH_END_X - 480 ──────────────────────────────
+  {
+    const gateWX = PATH_END_X - 480;
+    const gateDist = dist2D(ls.tug.x, ls.tug.y, gateWX, DOCK_WATERLINE_Y);
+    if (gateDist <= 2200 && gateDist >= 20) {
+      const b = relBearing(ls.tug.x, ls.tug.y, ls.tug.heading, gateWX, DOCK_WATERLINE_Y);
+      if (Math.abs(b) <= HALF_FOV + 12) {
+        const edgeFade = Math.min(1, (HALF_FOV + 12 - Math.abs(b)) / 12);
+        const distFade = Math.max(0.15, 1 - gateDist / 2200);
+        const sc = Math.max(0.15, Math.min(3.0, 420 / gateDist));
+        const gsx = perspX(b);
+        const gBaseY = Math.min(HORIZ_Y + (EYE_HEIGHT / gateDist) * FOCAL, DASH_TOP - 16);
+        ctx.save();
+        ctx.globalAlpha = distFade * edgeFade * 0.92;
+
+        const pilH = 62 * sc, pilW = 12 * sc;
+        // Stone pillar body
+        const pg = ctx.createLinearGradient(gsx - pilW / 2, 0, gsx + pilW / 2, 0);
+        pg.addColorStop(0, "#908480"); pg.addColorStop(0.5, "#c0b4a8"); pg.addColorStop(1, "#706860");
+        ctx.fillStyle = pg;
+        ctx.fillRect(gsx - pilW / 2, gBaseY - pilH, pilW, pilH);
+        // Stone course lines
+        if (sc > 0.32) {
+          ctx.strokeStyle = "rgba(0,0,0,0.12)"; ctx.lineWidth = 0.5;
+          for (let ci = 1; ci < 6; ci++) {
+            const cy2 = gBaseY - pilH * (ci / 6);
+            ctx.beginPath(); ctx.moveTo(gsx - pilW / 2, cy2); ctx.lineTo(gsx + pilW / 2, cy2); ctx.stroke();
+          }
+        }
+        // Cap stone
+        ctx.fillStyle = "#c8bca8";
+        ctx.fillRect(gsx - pilW * 0.65, gBaseY - pilH - 3 * sc, pilW * 1.3, 3 * sc);
+        // Red nav light on top
+        const rPulse = 0.5 + Math.sin(ls.time * 3.6) * 0.5;
+        const lightY = gBaseY - pilH - 7 * sc;
+        ctx.beginPath(); ctx.arc(gsx, lightY, 4 * sc, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(238,50,32,${0.6 + rPulse * 0.4})`; ctx.fill();
+        if (sc > 0.45) {
+          ctx.beginPath(); ctx.arc(gsx, lightY, 10 * sc, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(238,50,32,${rPulse * 0.22})`; ctx.fill();
+        }
+        if (sc > 0.45) {
+          ctx.fillStyle = "rgba(255,220,80,0.90)";
+          ctx.font = `bold ${Math.max(7, Math.round(8 * sc))}px sans-serif`;
+          ctx.textAlign = "center";
+          ctx.fillText("PORT ENTRY", gsx, gBaseY - pilH - 14 * sc);
+        }
+        ctx.restore();
+      }
+    }
+  }
+
+  // ── Harbor authority building at PATH_END_X - 200 ───────────────────────
+  {
+    const habWX = PATH_END_X - 200;
+    const habDist = dist2D(ls.tug.x, ls.tug.y, habWX, DOCK_WATERLINE_Y);
+    if (habDist <= 2500 && habDist >= 20) {
+      const b = relBearing(ls.tug.x, ls.tug.y, ls.tug.heading, habWX, DOCK_WATERLINE_Y);
+      if (Math.abs(b) <= HALF_FOV + 12) {
+        const edgeFade = Math.min(1, (HALF_FOV + 12 - Math.abs(b)) / 12);
+        const distFade = Math.max(0.12, 1 - habDist / 2500);
+        const sc = Math.max(0.15, Math.min(3.0, 400 / habDist));
+        const hsx = perspX(b);
+        const hBaseY = Math.min(HORIZ_Y + (EYE_HEIGHT / habDist) * FOCAL, DASH_TOP - 16);
+        ctx.save();
+        ctx.globalAlpha = distFade * edgeFade * 0.92;
+
+        const bH = 55 * sc, bW = 62 * sc;
+        // Right shadow extrusion
+        ctx.fillStyle = "rgba(0,0,0,0.25)";
+        ctx.fillRect(hsx + bW / 2, hBaseY - bH, 6 * sc, bH);
+        // Building front
+        const bG = ctx.createLinearGradient(hsx - bW / 2, 0, hsx + bW / 2, 0);
+        bG.addColorStop(0, "#a89870"); bG.addColorStop(0.5, "#d4c8a8"); bG.addColorStop(1, "#b0a080");
+        ctx.fillStyle = bG;
+        ctx.fillRect(hsx - bW / 2, hBaseY - bH, bW, bH);
+        // Gable roof
+        ctx.fillStyle = "#7a5e3a";
+        ctx.beginPath();
+        ctx.moveTo(hsx - bW / 2 - 2 * sc, hBaseY - bH);
+        ctx.lineTo(hsx,                    hBaseY - bH - 18 * sc);
+        ctx.lineTo(hsx + bW / 2 + 2 * sc, hBaseY - bH);
+        ctx.closePath(); ctx.fill();
+        // Roof highlight
+        ctx.fillStyle = "rgba(210,165,90,0.26)";
+        ctx.beginPath();
+        ctx.moveTo(hsx - bW / 2 - 2 * sc, hBaseY - bH);
+        ctx.lineTo(hsx,                    hBaseY - bH - 18 * sc);
+        ctx.lineTo(hsx - 2 * sc,           hBaseY - bH);
+        ctx.closePath(); ctx.fill();
+        // Windows
+        if (sc > 0.30) {
+          ctx.fillStyle = "rgba(178,235,255,0.52)";
+          [-bW * 0.35, -bW * 0.10, bW * 0.16].forEach((ox) => {
+            ctx.fillRect(hsx + ox - 4 * sc, hBaseY - bH * 0.68, 8 * sc, 8 * sc);
+            ctx.strokeStyle = "rgba(60,90,110,0.30)"; ctx.lineWidth = 0.5;
+            ctx.strokeRect(hsx + ox - 4 * sc, hBaseY - bH * 0.68, 8 * sc, 8 * sc);
+          });
+        }
+        // Door
+        ctx.fillStyle = "#3a2208";
+        ctx.fillRect(hsx - 4 * sc, hBaseY - bH * 0.30, 8 * sc, bH * 0.30);
+        // Flagpole + waving flag
+        const fpx = hsx + bW * 0.42;
+        ctx.fillStyle = "#9a8870"; ctx.fillRect(fpx - 1, hBaseY - bH - 30 * sc, 2, 28 * sc);
+        const fw = Math.sin(ls.time * 3.1) * 3 * sc;
+        ctx.fillStyle = "rgba(12,45,140,0.92)";
+        ctx.beginPath();
+        ctx.moveTo(fpx + 1,           hBaseY - bH - 28 * sc);
+        ctx.lineTo(fpx + 16 * sc + fw, hBaseY - bH - 22 * sc);
+        ctx.lineTo(fpx + 14 * sc + fw, hBaseY - bH - 16 * sc);
+        ctx.lineTo(fpx + 1,           hBaseY - bH - 16 * sc);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.40)";
+        ctx.beginPath();
+        ctx.moveTo(fpx + 1,           hBaseY - bH - 28 * sc);
+        ctx.lineTo(fpx + 16 * sc + fw, hBaseY - bH - 22 * sc);
+        ctx.lineTo(fpx + 1,           hBaseY - bH - 24 * sc);
+        ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.arc(fpx, hBaseY - bH - 30 * sc, 2.5, 0, Math.PI * 2);
+        ctx.fillStyle = "#f0d040"; ctx.fill();
+
+        if (sc > 0.36) {
+          ctx.fillStyle = "rgba(250,228,148,0.95)";
+          ctx.font = `bold ${Math.max(7, Math.round(8 * sc))}px sans-serif`;
+          ctx.textAlign = "center";
+          ctx.fillText("HARBOR AUTHORITY", hsx, hBaseY - bH - 32 * sc);
+        }
+        ctx.restore();
+      }
+    }
+  }
+
+  // ── Channel buoys (green port / red starboard pairs) ────────────────────
+  {
+    const buoyDefs: Array<{ wx: number; wy: number; fill: string; glow: string }> = [
+      { wx: PATH_END_X - 780, wy: DOCK_WATERLINE_Y + 44, fill: "#26d44e", glow: "rgba(38,210,72," },
+      { wx: PATH_END_X - 780, wy: DOCK_WATERLINE_Y + 108, fill: "#e43028", glow: "rgba(228,45,35," },
+      { wx: PATH_END_X - 420, wy: DOCK_WATERLINE_Y + 42, fill: "#26d44e", glow: "rgba(38,210,72," },
+      { wx: PATH_END_X - 420, wy: DOCK_WATERLINE_Y + 102, fill: "#e43028", glow: "rgba(228,45,35," },
+    ];
+    buoyDefs.forEach(({ wx, wy, fill, glow }) => {
+      const p = project(ls.tug.x, ls.tug.y, ls.tug.heading, wx, wy, 0);
+      if (!p) return;
+      const { sx: bx, dist: bd } = p;
+      if (bd > 2200) return;
+      const bearing = relBearing(ls.tug.x, ls.tug.y, ls.tug.heading, wx, wy);
+      const edgeFade = Math.min(1, (HALF_FOV + 10 - Math.abs(bearing)) / 10);
+      const distFade = Math.max(0.12, 1 - bd / 2200);
+      const sc = Math.max(0.06, Math.min(6, 200 / bd));
+      const waterY = Math.min(HORIZ_Y + (EYE_HEIGHT / bd) * FOCAL, DASH_TOP - 16);
+      const bob = Math.sin(ls.time * 1.7 + wx * 0.006) * 2;
+      const by = waterY + bob;
+      const bPulse = 0.4 + Math.sin(ls.time * 3.9 + wy * 0.05) * 0.6;
+
       ctx.save();
-      ctx.globalAlpha = Math.min(0.85, 800 / portDist);
-      ctx.fillStyle = "rgba(25,32,44,0.8)";
-      ctx.fillRect(psx - 100 * sc2, portBaseY - 28 * sc2, 200 * sc2, 30 * sc2);
-      ctx.fillStyle = "rgba(255,180,80,0.85)";
-      ctx.font = `bold ${Math.max(9, Math.round(11 * sc2))}px sans-serif`;
-      ctx.textAlign = "center";
-      ctx.fillText("PORT", psx, portBaseY - 8 * sc2);
+      ctx.globalAlpha = distFade * edgeFade * 0.92;
+      // Buoy body
+      ctx.beginPath(); ctx.arc(bx, by, 5 * sc, 0, Math.PI * 2);
+      ctx.fillStyle = fill; ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,0.28)"; ctx.lineWidth = 1; ctx.stroke();
+      // Mast
+      ctx.strokeStyle = "rgba(210,195,145,0.75)"; ctx.lineWidth = Math.max(0.5, sc * 0.8);
+      ctx.beginPath(); ctx.moveTo(bx, by - 2 * sc); ctx.lineTo(bx, by - 12 * sc); ctx.stroke();
+      // Flashing topmark
+      ctx.beginPath(); ctx.arc(bx, by - 12 * sc, 2.5 * sc, 0, Math.PI * 2);
+      ctx.fillStyle = glow + (0.5 + bPulse * 0.5) + ")"; ctx.fill();
+      ctx.beginPath(); ctx.arc(bx, by - 12 * sc, 6 * sc, 0, Math.PI * 2);
+      ctx.fillStyle = glow + (bPulse * 0.16) + ")"; ctx.fill();
+      // Water ring
+      if (sc > 0.35) {
+        ctx.strokeStyle = "rgba(100,170,215,0.18)"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(bx, by, 9 * sc, 0, Math.PI * 2); ctx.stroke();
+      }
       ctx.restore();
+    });
+  }
+
+  // ── Final berth dock face at PATH_END_X ──────────────────────────────────
+  {
+    const berthDist = dist2D(ls.tug.x, ls.tug.y, PATH_END_X, DOCK_WATERLINE_Y);
+    if (berthDist <= 2000 && berthDist >= 20) {
+      const b = relBearing(ls.tug.x, ls.tug.y, ls.tug.heading, PATH_END_X, DOCK_WATERLINE_Y);
+      if (Math.abs(b) <= HALF_FOV + 12) {
+        const edgeFade = Math.min(1, (HALF_FOV + 12 - Math.abs(b)) / 12);
+        const distFade = Math.max(0.15, 1 - berthDist / 2000);
+        const sc = Math.max(0.15, Math.min(3.0, 400 / berthDist));
+        const bsx = perspX(b);
+        const bBaseY = Math.min(HORIZ_Y + (EYE_HEIGHT / berthDist) * FOCAL, DASH_TOP - 16);
+        const fastPulse = 0.5 + Math.sin(ls.time * 5.2) * 0.5;
+        ctx.save();
+        ctx.globalAlpha = distFade * edgeFade * 0.95;
+
+        const dH = 52 * sc, dW = 32 * sc;
+        // Concrete dock face
+        ctx.fillStyle = "#808878"; ctx.fillRect(bsx - dW / 2, bBaseY - dH, dW, dH);
+        // Yellow hazard stripe at base
+        ctx.fillStyle = "#1a1812"; ctx.fillRect(bsx - dW / 2, bBaseY - 5 * sc, dW, 5 * sc);
+        let strOn = true;
+        for (let sx2 = bsx - dW / 2; sx2 < bsx + dW / 2; sx2 += 4 * sc) {
+          if (strOn) { ctx.fillStyle = "rgba(230,196,0,0.80)"; ctx.fillRect(sx2, bBaseY - 5 * sc, 4 * sc, 5 * sc); }
+          strOn = !strOn;
+        }
+        // Flashing amber beacon
+        ctx.beginPath(); ctx.arc(bsx, bBaseY - dH * 0.55, 4 * sc, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,212,52,${0.38 + fastPulse * 0.62})`; ctx.fill();
+        ctx.beginPath(); ctx.arc(bsx, bBaseY - dH * 0.55, 10 * sc, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,190,20,${fastPulse * 0.18})`; ctx.fill();
+        // Bollards on dock face
+        if (sc > 0.38) {
+          [-dW * 0.30, 0, dW * 0.30].forEach((ox) => {
+            ctx.fillStyle = "#6e5c40";
+            ctx.fillRect(bsx + ox - 2 * sc, bBaseY - 12 * sc, 4 * sc, 12 * sc);
+            ctx.beginPath(); ctx.ellipse(bsx + ox, bBaseY - 12 * sc, 3 * sc, 2 * sc, 0, 0, Math.PI * 2);
+            ctx.fillStyle = "#b0a068"; ctx.fill();
+          });
+        }
+        // "DOCK HERE" label
+        if (sc > 0.42) {
+          const lbl = "DOCK HERE";
+          ctx.font = `bold ${Math.max(9, Math.round(10 * sc))}px sans-serif`;
+          ctx.textAlign = "center";
+          const tw = ctx.measureText(lbl).width + 8;
+          ctx.fillStyle = "rgba(15,10,4,0.82)";
+          ctx.fillRect(bsx - tw / 2, bBaseY - dH - 16 * sc, tw, 13 * sc);
+          ctx.fillStyle = "rgba(255,212,52,1.0)";
+          ctx.fillText(lbl, bsx, bBaseY - dH - 6 * sc);
+        }
+        ctx.restore();
+      }
     }
   }
 
@@ -1156,9 +1454,8 @@ function drawHorizonScenery(ctx: CanvasRenderingContext2D, ls: LocalState) {
 // ── Vessels ───────────────────────────────────────────────────────────
 
 function drawVessels(ctx: CanvasRenderingContext2D, ls: LocalState) {
-  type VEntry = { v: LocalVessel; label: string; hull: string; cabin: string; baseH: number; baseW: number; isEscort?: boolean };
+  type VEntry = { v: LocalVessel; label: string; hull: string; cabin: string; baseH: number; baseW: number };
   const vessels: VEntry[] = [
-    { v: ls.escort, label: "ESCORT", hull: "#28383a", cabin: "#3a4a48", baseH: 52, baseW: 22, isEscort: true },
     { v: ls.cargo,  label: "CARGO",  hull: "#3a5a78", cabin: "#4a6a88", baseH: 40, baseW: 17 },
     { v: ls.ferry,  label: "FERRY",  hull: "#5a7a9a", cabin: "#6a8aaa", baseH: 32, baseW: 14 },
     ...ls.fishers.map((f) => ({ v: f, label: "", hull: "#6a5030", cabin: "#8a7050", baseH: 13, baseW: 5 } as VEntry)),
@@ -1174,7 +1471,7 @@ function drawVessels(ctx: CanvasRenderingContext2D, ls: LocalState) {
     .filter((x): x is NonNullable<typeof x> => x !== null)
     .sort((a, b) => b.dist - a.dist);
 
-  for (const { v, label, hull, cabin, baseH, baseW, isEscort, sx, dist } of projected) {
+  for (const { v, label, hull, cabin, baseH, baseW, sx, dist } of projected) {
     const sinkT = v.sinkT ?? 0;
     if (sinkT >= 1) continue;
     const bearing = relBearing(ls.tug.x, ls.tug.y, ls.tug.heading, v.x, v.y);
@@ -1192,9 +1489,7 @@ function drawVessels(ctx: CanvasRenderingContext2D, ls: LocalState) {
     ctx.save();
     ctx.globalAlpha = alpha;
 
-    if (isEscort) {
-      drawEscortFPV(ctx, sx, topY, botY, h, wid, sinkT, dist);
-    } else if (label === "CARGO") {
+    if (label === "CARGO") {
       drawCargoFPV(ctx, sx, topY, botY, h, wid, scale, ls.time);
     } else if (label === "FERRY") {
       drawFerryFPV(ctx, sx, topY, botY, h, wid, scale, ls.time);
@@ -1225,7 +1520,7 @@ function drawVessels(ctx: CanvasRenderingContext2D, ls: LocalState) {
     if (label && dist < 500 && scale > 0.3) {
       ctx.save();
       ctx.globalAlpha = alpha * 0.88;
-      ctx.fillStyle = isEscort ? "rgba(255,230,100,0.9)" : "rgba(255,255,255,0.7)";
+      ctx.fillStyle = "rgba(255,255,255,0.7)";
       ctx.font = `bold ${Math.max(8, Math.round(9 * scale))}px sans-serif`;
       ctx.textAlign = "center";
       ctx.fillText(label, sx, topY - h * 0.55 - 4);
@@ -1366,103 +1661,6 @@ function drawFerryFPV(ctx: CanvasRenderingContext2D, sx: number, topY: number, b
   }
 }
 
-/** Detailed escort cargo ship silhouette in FPV. */
-function drawEscortFPV(ctx: CanvasRenderingContext2D, sx: number, topY: number, botY: number, h: number, wid: number, sinkT: number, dist: number) {
-  void sinkT;
-  const mid = topY + (botY - topY) * 0.5;
-  // Hull
-  const hg = ctx.createLinearGradient(sx - wid, topY, sx + wid, botY);
-  hg.addColorStop(0, "#28383a");
-  hg.addColorStop(0.5, "#2e4244");
-  hg.addColorStop(1, "#1a2830");
-  ctx.fillStyle = hg;
-  ctx.beginPath();
-  ctx.moveTo(sx, topY);
-  ctx.lineTo(sx + wid, topY + h * 0.28);
-  ctx.lineTo(sx + wid * 0.9, botY);
-  ctx.lineTo(sx - wid * 0.9, botY);
-  ctx.lineTo(sx - wid, topY + h * 0.28);
-  ctx.closePath();
-  ctx.fill();
-  // Waterline stripe
-  ctx.strokeStyle = "#c84820";
-  ctx.lineWidth = Math.max(1, h * 0.04);
-  ctx.beginPath();
-  ctx.moveTo(sx - wid * 0.92, mid + h * 0.12);
-  ctx.lineTo(sx + wid * 0.92, mid + h * 0.12);
-  ctx.stroke();
-  // Deck
-  ctx.fillStyle = "#3a4a38";
-  ctx.beginPath();
-  ctx.moveTo(sx, topY + h * 0.02);
-  ctx.lineTo(sx + wid * 0.82, topY + h * 0.24);
-  ctx.lineTo(sx + wid * 0.74, mid + h * 0.08);
-  ctx.lineTo(sx - wid * 0.74, mid + h * 0.08);
-  ctx.lineTo(sx - wid * 0.82, topY + h * 0.24);
-  ctx.closePath();
-  ctx.fill();
-  // Cargo hatches (3)
-  if (dist < 600) {
-    const hw = wid * 0.44;
-    const hh = h * 0.1;
-    [-h * 0.3, -h * 0.09, h * 0.06].forEach((oy) => {
-      ctx.fillStyle = "#2a3828";
-      ctx.fillRect(sx - hw, topY + h * 0.26 + oy, hw * 2, hh + 2);
-      ctx.fillStyle = "#3e5040";
-      ctx.fillRect(sx - hw + 1, topY + h * 0.27 + oy, hw * 2 - 2, hh);
-    });
-    // Cranes
-    ctx.strokeStyle = "#e0b820";
-    ctx.lineWidth = Math.max(0.6, h * 0.015);
-    [[-wid * 0.5, -h * 0.22], [wid * 0.5, -h * 0.22]].forEach(([ox, oy]) => {
-      const bx2 = sx + ox;
-      const by2 = topY + h * 0.28 + oy;
-      ctx.beginPath();
-      ctx.moveTo(bx2, by2 + h * 0.04);
-      ctx.lineTo(bx2, by2 - h * 0.08);
-      ctx.lineTo(bx2 + (ox > 0 ? wid * 0.28 : -wid * 0.28), by2 - h * 0.18);
-      ctx.stroke();
-    });
-  }
-  // Bridge superstructure (aft, right side in FPV facing bow)
-  const bx3 = sx + wid * 0.28;
-  const by3 = topY + h * 0.06;
-  ctx.fillStyle = "#d0c8b8";
-  ctx.fillRect(bx3 - wid * 0.22, by3, wid * 0.44, h * 0.28);
-  ctx.fillStyle = "#1a2838";
-  ctx.fillRect(bx3 - wid * 0.19, by3 + h * 0.04, wid * 0.38, h * 0.08);
-  ctx.fillStyle = "rgba(120,180,220,0.5)";
-  for (let wi = 0; wi < 3; wi++) {
-    ctx.fillRect(bx3 - wid * 0.15 + wi * wid * 0.1, by3 + h * 0.05, wid * 0.07, h * 0.06);
-  }
-  // Funnel
-  ctx.fillStyle = "#1a1a1a";
-  ctx.fillRect(bx3 - wid * 0.07, by3 - h * 0.12, wid * 0.14, h * 0.16);
-  ctx.fillStyle = "#e8c030";
-  ctx.fillRect(bx3 - wid * 0.07, by3 - h * 0.04, wid * 0.14, h * 0.04);
-  // Mast
-  if (dist < 700) {
-    ctx.strokeStyle = "rgba(180,170,140,0.65)";
-    ctx.lineWidth = Math.max(0.5, h * 0.012);
-    ctx.beginPath();
-    ctx.moveTo(sx, topY);
-    ctx.lineTo(sx, topY - h * 0.45);
-    ctx.stroke();
-    // Yardarm
-    ctx.beginPath();
-    ctx.moveTo(sx - wid * 0.35, topY - h * 0.35);
-    ctx.lineTo(sx + wid * 0.35, topY - h * 0.35);
-    ctx.stroke();
-    // Nav lights
-    ctx.fillStyle = "#ff4040";
-    ctx.beginPath(); ctx.arc(sx - wid * 0.9, mid, Math.max(1, h * 0.025), 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "#40ff80";
-    ctx.beginPath(); ctx.arc(sx + wid * 0.9, mid, Math.max(1, h * 0.025), 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "#ffff80";
-    ctx.beginPath(); ctx.arc(sx, topY - h * 0.44, Math.max(1, h * 0.022), 0, Math.PI * 2); ctx.fill();
-  }
-}
-
 // ── Cherry blossoms ───────────────────────────────────────────────────
 
 function drawCherryBlossoms(ctx: CanvasRenderingContext2D, ls: LocalState) {
@@ -1583,13 +1781,14 @@ function drawWheelhouse(ctx: CanvasRenderingContext2D, ls: LocalState, hud?: Fpv
   ctx.fillStyle = "rgba(255,200,80,0.1)";
   ctx.fillRect(0, DASH_TOP + 3, CW, 1);
 
-  const dashH = CH - DASH_TOP;
-  const midY = DASH_TOP + dashH * 0.46;
+  // ── Instruments packed into the top ~175 px of the dashboard so they remain
+  // fully visible on 1920×1080 screens (safe canvas Y ≤ ~670).
+  // DASH_TOP = 490; all Y coords below are absolute canvas pixels.
+  const midY = DASH_TOP + 55;   // centre of compass / speed gauge  → Y ≈ 545
 
-  // Instruments
-  drawFPVCompass(ctx, 148, midY, 40, ls.tug.heading);
-  drawFPVGauge(ctx, CW - 148, midY, 40, "SPEED", ls.tug.speed, 18, "#30e080");
-  drawSteeringWheel(ctx, SCENE_CX, DASH_TOP + dashH * 0.52, 48, ls.tug.rudder);
+  drawFPVCompass(ctx, 148, midY, 28, ls.tug.heading);
+  drawFPVGauge(ctx, CW - 148, midY, 28, "SPEED", ls.tug.speed, 18, "#30e080");
+  drawSteeringWheel(ctx, SCENE_CX, DASH_TOP + 82, 26, ls.tug.rudder);
 
   // Digital heading
   ctx.fillStyle = "rgba(50,220,90,0.92)";
@@ -1608,7 +1807,7 @@ function drawWheelhouse(ctx: CanvasRenderingContext2D, ls: LocalState, hud?: Fpv
   ];
   lights.forEach(({ label, on, col }, i) => {
     const lx = SCENE_CX - 72 + i * 48;
-    const ly = DASH_TOP + dashH * 0.82;
+    const ly = DASH_TOP + 148;   // Y ≈ 638, within safe zone for 1920×1080
     ctx.fillStyle = on ? col : "rgba(255,255,255,0.09)";
     if (on) { ctx.shadowColor = col; ctx.shadowBlur = 6; }
     ctx.beginPath(); ctx.arc(lx, ly, 4.5, 0, Math.PI * 2); ctx.fill();
@@ -1864,15 +2063,6 @@ function drawMiniMap(ctx: CanvasRenderingContext2D, ls: LocalState) {
     ctx.fillStyle = col;
     ctx.beginPath(); ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2); ctx.fill();
   });
-
-  // Escort (green dot with heading tick)
-  {
-    const ep = toMap(ls.escort.x, ls.escort.y);
-    if (ep.x >= mx && ep.x <= mx + MM_W && ep.y >= my && ep.y <= my + MM_H) {
-      ctx.fillStyle = "#60cc60";
-      ctx.beginPath(); ctx.arc(ep.x, ep.y, 3.5, 0, Math.PI * 2); ctx.fill();
-    }
-  }
 
   // Tug (white dot + heading arrow)
   const tp = toMap(ls.tug.x, ls.tug.y);

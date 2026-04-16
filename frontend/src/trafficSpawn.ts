@@ -4,10 +4,10 @@ import type { LocalState, LocalVessel } from "./types";
 /** Boats farther than this from camera are removed (unless sinking). */
 const FAR_FROM_CAM = 1800;
 /** Try to keep about this many NPC boats near the center view. */
-const TARGET_NEAR_CAM = 6;
-const SPAWN_ACCUM_SEC = 0.95;
-const MAX_TRAFFIC = 12;
-const MAX_FISHERS = 5;
+const TARGET_NEAR_CAM = 2;
+const SPAWN_ACCUM_SEC = 1.55;
+const MAX_TRAFFIC = 3;
+const MAX_FISHERS = 1;
 const SPAWN_MIN_DIST = 220;
 const SPAWN_MAX_DIST = 520;
 const KEEP_AROUND_CAM_DIST = 980;

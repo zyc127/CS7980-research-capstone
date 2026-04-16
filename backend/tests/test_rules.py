@@ -1,6 +1,6 @@
 import os
-from engine.rules_loader import load_rules
-from engine.rule_engine import RuleEngine
+
+from rule_engine import RuleEngine
 from scenarios.vancouver_harbor import (
     create_fog_scenario,
     create_docking_scenario,
@@ -12,8 +12,14 @@ from scenarios.vancouver_harbor import create_initial_state
 
 def _engine():
     rules_path = os.path.join(os.path.dirname(__file__), "..", "rules", "harbor_rules.yaml")
-    rules = load_rules(os.path.abspath(rules_path))
-    return RuleEngine(rules)
+    return RuleEngine(os.path.abspath(rules_path))
+
+
+def _step(eng: RuleEngine, state):
+    """One tick on the same engine the API uses; returns (state, first explanation or None)."""
+    new_state, explanations = eng.step(state)
+    explanation = explanations[0] if explanations else None
+    return new_state, explanation
 
 
 def test_priority_fog_event_response_beats_harbour_entry_speed_limit():
@@ -25,7 +31,7 @@ def test_priority_fog_event_response_beats_harbour_entry_speed_limit():
     state.agents["tugboat"].speed = 10.0  # triggers harbour_entry_speed_limit
     state.active_events["fog_alert"] = True  # triggers fog_event_response (events.*)
 
-    new_state, explanation = eng.step(state)
+    new_state, explanation = _step(eng, state)
 
     assert explanation is not None
     assert explanation.rule_id == "fog_event_response"
@@ -40,7 +46,7 @@ def test_priority_high_wind_beats_docking_heading_alignment():
     state.environment.wind_speed = 35.0  # triggers high_wind_heading_restriction
     state.global_metrics["heading_error"] = 25.0  # triggers docking_heading_alignment
 
-    new_state, explanation = eng.step(state)
+    new_state, explanation = _step(eng, state)
 
     assert explanation is not None
     assert explanation.rule_id == "high_wind_heading_restriction"
@@ -51,11 +57,15 @@ def test_priority_escort_collision_risk_beats_speed_mismatch():
     state = create_initial_state()
 
     state.environment.zone = "escort_corridor"
-    state.global_metrics["tugboat_cargo_distance"] = 10.0  # triggers escort_collision_risk
-    state.agents["tugboat"].speed = 3.0                    # triggers escort_collision_risk (>2)
-    state.agents["cargo_ship"].speed = 6.0                 # makes tugboat slower -> triggers speed mismatch
+    # Canonical engine recomputes distance from positions after kinematics — place ships 10 m apart.
+    state.agents["tugboat"].position_x = 0.0
+    state.agents["tugboat"].position_y = 0.0
+    state.agents["cargo_ship"].position_x = 10.0
+    state.agents["cargo_ship"].position_y = 0.0
+    state.agents["tugboat"].speed = 3.0  # triggers escort_collision_risk (>2)
+    state.agents["cargo_ship"].speed = 6.0  # makes tugboat slower -> triggers speed mismatch
 
-    new_state, explanation = eng.step(state)
+    new_state, explanation = _step(eng, state)
 
     assert explanation is not None
     assert explanation.rule_id == "escort_collision_risk"
@@ -65,7 +75,7 @@ def test_priority_escort_collision_risk_beats_speed_mismatch():
 def test_fog_scenario_triggers_rule_and_event():
     eng = _engine()
     state = create_fog_scenario()
-    new_state, explanation = eng.step(state)
+    new_state, explanation = _step(eng, state)
 
     assert explanation is not None
     # visibility is low
@@ -77,7 +87,7 @@ def test_fog_scenario_triggers_rule_and_event():
 def test_docking_scenario_triggers_docking_behavior():
     eng = _engine()
     state = create_docking_scenario()
-    new_state, explanation = eng.step(state)
+    new_state, explanation = _step(eng, state)
 
     assert explanation is not None
     assert new_state.environment.zone == "docking_zone"
@@ -86,7 +96,7 @@ def test_docking_scenario_triggers_docking_behavior():
 def test_emergency_scenario_triggers_engine_failure_logic():
     eng = _engine()
     state = create_emergency_scenario()
-    new_state, explanation = eng.step(state)
+    new_state, explanation = _step(eng, state)
 
     assert explanation is not None
     # engine_status was set to 0 in scenario; a safety/emergency rule should fire

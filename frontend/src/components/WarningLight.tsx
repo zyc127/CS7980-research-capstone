@@ -3,8 +3,8 @@ export function WarningLight({ label, on, color = "#ee2010" }: { label: string; 
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
       <div
         style={{
-          width: 15,
-          height: 15,
+          width: 18,
+          height: 18,
           borderRadius: "50%",
           background: on ? color : "#1e1510",
           border: `1.5px solid ${on ? color : "rgba(180, 130, 55, 0.45)"}`,
@@ -19,7 +19,7 @@ export function WarningLight({ label, on, color = "#ee2010" }: { label: string; 
       <div
         style={{
           fontFamily: "var(--font-display, 'Orbitron', monospace)",
-          fontSize: 8,
+          fontSize: 9,
           fontWeight: 700,
           letterSpacing: "0.04em",
           color: on ? "rgba(255, 200, 190, 0.95)" : "rgba(185, 148, 85, 0.82)",

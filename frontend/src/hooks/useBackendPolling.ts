@@ -6,8 +6,7 @@ import type { HelmKeys } from "./useKeyboardControls";
 const POLL_MS = 280;
 
 /**
- * Only POST /step when the player is actually driving (keys, speed, or helm).
- * Avoids spamming the backend while idle at the pier.
+ * Only POST /step when the player is actively driving, OR when a forced sync is requested.
  */
 export function shouldSyncBackend(ls: LocalState | null, keys: HelmKeys): boolean {
   if (!ls) return false;
@@ -24,20 +23,24 @@ type PollingOpts = {
   keysRef: MutableRefObject<HelmKeys>;
   raceCompleteRef: MutableRefObject<boolean>;
   sendStep: () => Promise<void>;
+  /** When true, the next poll tick fires sendStep regardless of movement. Cleared after firing. */
+  forceSyncRef?: MutableRefObject<boolean>;
 };
 
 /**
- * Controller: periodic rule-engine sync with the FastAPI session (only when needed).
+ * Controller: periodic rule-engine sync (only when needed, or when forceSyncRef is set).
  */
-export function useBackendPolling({ status, localStateRef, keysRef, raceCompleteRef, sendStep }: PollingOpts) {
+export function useBackendPolling({ status, localStateRef, keysRef, raceCompleteRef, sendStep, forceSyncRef }: PollingOpts) {
   useEffect(() => {
     const id = window.setInterval(() => {
       if (raceCompleteRef.current) return;
       if (status !== "ok") return;
       const ls = localStateRef.current;
-      if (!shouldSyncBackend(ls, keysRef.current)) return;
+      const forced = forceSyncRef?.current ?? false;
+      if (!shouldSyncBackend(ls, keysRef.current) && !forced) return;
+      if (forced && forceSyncRef) forceSyncRef.current = false;
       void sendStep();
     }, POLL_MS);
     return () => window.clearInterval(id);
-  }, [sendStep, status, localStateRef, keysRef, raceCompleteRef]);
+  }, [sendStep, status, localStateRef, keysRef, raceCompleteRef, forceSyncRef]);
 }

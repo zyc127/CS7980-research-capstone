@@ -1,245 +1,427 @@
-# A Decision-Driven, Explainable System Architecture for Interactive Museum Exhibits under Resource Constraints
+# TugSim — Maritime Navigation Simulator
 
-## 1. Project Overview
-
-This project implements a decision-driven educational simulation system designed to model tugboat navigation scenarios in a transparent and explainable way.
-
-Unlike traditional immersive simulation systems that prioritize visual realism, our architecture emphasizes:
-
-- Explicit rule-based decision logic
-- Prioritized rule execution
-- Transparent explanation of cause-and-effect
-- Lightweight Unity visualization for clarity
-
-The system is designed to foreground educational reasoning rather than high-fidelity rendering.
+An interactive, browser-based tugboat navigation simulator built for museum education. The system uses an explainable rule engine to make every decision visible to the learner: every speed limit enforced, every emergency triggered, and every navigation rule applied is traced back to explicit conditions and explained in plain language.
 
 ---
 
-## 2. High-Level Architecture
+## Table of Contents
 
-```
-+-------------------+
-|    Input Layer    |
-+-------------------+
-          ↓
-+-------------------+
-|   Decision Engine |
-|  (Rule Evaluation |
-|   Explanation)    |
-+-------------------+
-          ↓
-+-------------------+
-|   Output Layer    |
-+-------------------+
-```
-
-### Components
-
-**1. Input Layer**
-Receives:
-- User actions (e.g., adjust speed, change direction)
-- Environmental updates (e.g., vessel distance change)
-
-**2. Decision Engine**
-- Evaluates rules
-- Resolves conflicts using priority
-- Updates system state
-
-**3. Output Layer**
-- Updates simulation state
-- Sends visual feedback to Unity
-
-**4. Explanation Layer** *(Key Contribution)*
-- Identifies which rule was triggered
-- Displays why it was triggered
-- Explains resulting consequences
-- Makes decision logic transparent
+- [Overview](#overview)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+  - [Backend](#backend)
+  - [Frontend](#frontend)
+- [Architecture](#architecture)
+- [Game Mechanics](#game-mechanics)
+  - [Controls](#controls)
+  - [Navigation Zones](#navigation-zones)
+  - [Scoring System](#scoring-system)
+  - [NPCs and Traffic](#npcs-and-traffic)
+  - [Scenarios](#scenarios)
+  - [Collision Detection](#collision-detection)
+- [Rule Engine](#rule-engine)
+  - [Rule Structure](#rule-structure)
+  - [Action Types](#action-types)
+  - [Conflict Resolution](#conflict-resolution)
+- [API Reference](#api-reference)
+- [Educational Design](#educational-design)
 
 ---
 
-## 3. Core Data Structures
+## Overview
 
-### 3.1 State Object
+TugSim simulates a tugboat navigating from an open-water departure point through a fog bank, a busy sea-lane, and into a final harbor berth. Along the way a Python-based rule engine evaluates the vessel's state against a YAML rule set on every tick, surfacing explanations about what rules fired and why — teaching maritime navigation principles through transparent cause-and-effect.
 
-Represents the full system condition.
+Key design choices:
 
-```yaml
-State:
-  agents:
-    tugboat:
-      speed: 6 knots
-      angle: 15 degrees
-      position: (x, y)
-    cargo_ship:
-      speed: 4 knots
-      position: (x, y)
+- **Explainability over immersion** — every rule that fires is shown to the player in real time.
+- **Decoupled engine** — the frontend runs a full 60 FPS physics simulation locally; the backend is polled every ~200 ms for rule evaluation without blocking the game loop.
+- **No-code rule authoring** — all maritime rules live in `backend/rules/harbor_rules.yaml` and can be extended without touching Python.
 
-  environment:
-    distance_between_vessels: 20 meters
-    harbor_zone: docking_area
+---
 
-  system_flags:
-    collision_risk: false
-    docking_mode: true
+## Project Structure
+
+```
+Research-capstone/
+├── backend/
+│   ├── api.py                    # FastAPI app, CORS, all HTTP routes
+│   ├── session.py                # SessionManager — one isolated engine per visitor
+│   ├── rule_engine.py            # Core decision engine (rule eval, chaining, explanations)
+│   ├── models/
+│   │   ├── state.py              # SystemState, AgentState, EnvironmentState
+│   │   ├── rule.py               # Rule, Condition schemas
+│   │   ├── action.py             # Action types and payloads
+│   │   ├── explanation.py        # Explanation, ConditionEvaluation output
+│   │   ├── enums.py              # Operator, ActionType, Zone, ConflictStrategy
+│   │   ├── event.py              # Event model
+│   │   ├── input.py              # UserInput schema
+│   │   └── conflict_resolution.py
+│   ├── rules/
+│   │   └── harbor_rules.yaml     # 20+ maritime rules (all scenarios)
+│   ├── scenarios/
+│   │   └── vancouver_harbor.py   # 4 scenario factory functions
+│   ├── tests/
+│   │   └── test_rules.py
+│   └── requirements.txt
+│
+├── frontend/
+│   ├── src/
+│   │   ├── App.tsx               # Main game loop, physics, collision, scoring
+│   │   ├── constants.ts          # World dimensions, physics tuning, weather presets
+│   │   ├── types.ts              # TypeScript types for backend + local state
+│   │   ├── localState.ts         # Initial client-side state factory
+│   │   ├── renderer.ts           # Canvas 2D top-down renderer
+│   │   ├── fpvRenderer.ts        # First-person bridge-view renderer
+│   │   ├── npcSteer.ts           # NPC vessel AI (target-heading interpolation)
+│   │   ├── trafficSpawn.ts       # Ephemeral traffic spawn/cull logic
+│   │   ├── proximity.ts          # Distance helpers
+│   │   ├── components/
+│   │   │   ├── TopBar.tsx        # Scenario + weather selector, score display
+│   │   │   ├── ControlPanel.tsx  # Live speed / heading / zone gauges
+│   │   │   ├── ExplanationPanel.tsx  # Rule popup (triggered rules + conditions)
+│   │   │   ├── RuleLog.tsx       # Scrolling history of all fired rules
+│   │   │   ├── PortCompleteModal.tsx  # End-of-run score + star rating
+│   │   │   ├── RudderWheel.tsx   # Visual rudder angle indicator
+│   │   │   ├── AnalogGauge.tsx   # Speed gauge
+│   │   │   ├── ThrottleLever.tsx # Throttle control visual
+│   │   │   └── WarningLight.tsx  # NPC / zone warning indicator
+│   │   ├── services/
+│   │   │   └── apiClient.ts      # HTTP client for /sessions endpoints
+│   │   ├── hooks/
+│   │   │   ├── useBackendPolling.ts   # Sends step requests when the tug moves
+│   │   │   └── useKeyboardControls.ts # Keyboard state tracker
+│   │   ├── styles.css
+│   │   └── main.tsx
+│   ├── package.json
+│   ├── vite.config.ts
+│   └── tsconfig.json
+│
+└── README.md
 ```
 
-The state stores all measurable parameters used by rule conditions.
+---
 
-### 3.2 Input Object
+## Getting Started
 
-Represents user or environment changes.
+### Backend
 
-```yaml
-Input:
-  type: "adjust_speed"
-  value: 8 knots
+**Requirements:** Python 3.10+
+
+```bash
+# 1. Install dependencies
+cd backend
+pip install -r requirements.txt
+
+# 2. Start the server
+uvicorn api:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Other input types include:
-- `change_angle`
-- `activate_docking_mode`
-- `sensor_update_distance`
+The API is now available at `http://localhost:8000`. Visit `http://localhost:8000/docs` for the interactive Swagger UI.
 
-Inputs modify the state and may trigger rule evaluation.
+**Backend dependencies:**
 
-### 3.3 Rule Object
+| Package | Version |
+|---------|---------|
+| fastapi | 0.115.0 |
+| uvicorn[standard] | 0.30.6 |
+| pydantic | 2.8.2 |
+| pyyaml | 6.0.2 |
 
-Each rule is modular and contains:
+---
 
-```yaml
-Rule:
-  id: R3
-  priority: 5
-  condition:
-    - distance_between_vessels < 25
-    - tugboat_speed > 7
-  action:
-    - set collision_risk = true
-    - reduce speed to 5
-  explanation_template:
-    "When the vessel is too close and speed exceeds safe limits,
-     collision risk increases."
+### Frontend
+
+**Requirements:** Node.js 18+
+
+```bash
+# 1. Install dependencies
+cd frontend
+npm install
+
+# 2. Start the dev server
+npm run dev
 ```
 
-| Attribute | Description |
+Open `http://localhost:5173` in your browser.
+
+Additional scripts:
+
+```bash
+npm run build    # TypeScript check + production Vite bundle
+npm run preview  # Serve the production build locally
+```
+
+> The frontend works in **demo mode** without the backend running — all physics and rendering are local. Backend connection unlocks the rule engine, explanations, and scenario events.
+
+---
+
+## Architecture
+
+```
+Browser (React + Canvas)
+│
+│  60 FPS game loop (physics, NPC AI, collision, scoring)
+│  ↕ keyboard input
+│  ↕ state read/write (localStateRef)
+│
+│  every ~200 ms (if tug is moving)
+│  ─────────────────────────────────────────────► FastAPI  :8000
+│                                                  │
+│                                                  │  SessionManager
+│                                                  │  └─ Session
+│                                                  │     ├─ SystemState
+│                                                  │     └─ RuleEngine
+│                                                  │        └─ harbor_rules.yaml
+│  ◄─────────────────────────────────────────────
+│  { state, explanations, rules_triggered }
+│
+│  ExplanationPanel / RuleLog updated
+```
+
+**Frontend** owns all real-time simulation:
+- Physics (speed, heading, rudder, drag)
+- NPC steering and collision detection
+- Camera follow-cam
+- Canvas rendering (top-down + first-person view)
+- Score tracking
+
+**Backend** handles rule evaluation only:
+- Receives `{ target_speed, target_heading, emergency_stop }` per tick
+- Evaluates 20+ YAML rules against the current `SystemState`
+- Returns triggered explanations and any state overrides (engine failure cap, zone update)
+- Each browser session has its own isolated `Session` object with independent state
+
+---
+
+## Game Mechanics
+
+### Controls
+
+| Key | Action |
+|-----|--------|
+| `↑` | Increase throttle (forward) |
+| `↓` | Decrease throttle / reverse |
+| `Q` | Port (left) rudder |
+| `E` | Starboard (right) rudder |
+| `Space` | Brake / emergency stop |
+| `V` | Toggle first-person bridge view |
+
+The `↑ / ↓` arrow keys also adjust the **throttle cap** (5–18 knots). The tug accelerates toward the cap with a ramp-up for realistic response.
+
+---
+
+### Navigation Zones
+
+The world is 12 000 units wide. Zones are determined automatically by the tug's X position:
+
+| Zone | X Range | Description |
+|------|---------|-------------|
+| Open Water | 0 – 4 499 | Unrestricted navigation, 12 kn cap |
+| Sea Lanes (Fog) | 4 500 – 7 499 | Automatic fog, 6 kn advisory, rules active |
+| Channel | 7 500 – 11 199 | Narrow approach, no-wake rules active |
+| Port | 11 200 + | Docking complete — run ends |
+
+Entering the **fog zone** (X = 4 500) automatically switches weather to fog and triggers the `fog` backend scenario. Approaching the **final berth** (X ≥ 10 000) triggers the `docking` scenario.
+
+---
+
+### Scoring System
+
+**Passive score** accumulates while the tug is moving (~0.7 pts/sec at 60 FPS).
+
+**Cherry blossom pickups** — falling petals scattered across the world. Collecting them awards combo-based points:
+
+| Combo streak | Points per flower |
 |---|---|
-| `id` | Unique identifier |
-| `priority` | Integer (1–5, higher = stronger) |
-| `condition` | Logical requirements |
-| `action` | State modification |
-| `explanation_template` | Human-readable reasoning |
+| 1 – 2 in a row | +10 |
+| 3 – 4 in a row | +12 |
+| 5 – 7 in a row | +15 |
+| 8+ in a row | +18 |
+
+The combo resets after 4 seconds without a pickup.
+
+**Safe navigation bonus** — +5 points every 20 continuous seconds of collision-free movement. Resets on any collision.
+
+**Penalties:**
+
+| Event | Score change |
+|---|---|
+| NPC vessel collision | −15 |
+| Moored ship graze | −3 |
+
+**Milestone toasts** appear at:
+
+| Score | Message |
+|-------|---------|
+| 10 | Nice Start! |
+| 20 | Smooth Sailing! |
+| 50 | Flower Collector! |
+| 100 | Master Navigator! |
+| 200 | Sea Legend! |
+
+**End-of-run star rating:**
+
+| Stars | Score required |
+|-------|---------------|
+| ★☆☆ | 20 |
+| ★★☆ | 50 |
+| ★★★ | 100 |
 
 ---
 
-## 4. Rule Execution Flow
+### NPCs and Traffic
 
-### Step 1 – Input Received
+| Vessel | Collision radius | Behavior |
+|--------|----------------|----------|
+| Ferry | 52 px | Persistent, slow heading interpolation |
+| Fishers | 38 px | Persistent, moderate agility |
+| Traffic | 40 px | Ephemeral — spawn/despawn near camera |
 
-User increases tugboat speed:
+All NPCs use a target-heading interpolation AI and steer around `WATER_ROCKS` obstacles scattered through the world. Colliding with an NPC sinks it with a splash + debris particle effect and triggers a screen flash and camera shake.
+
+---
+
+### Scenarios
+
+| Scenario | Trigger | Key rules active |
+|----------|---------|-----------------|
+| `default` | Game start / manual select | Open-water speed limit, cargo escort separation |
+| `fog` | Tug enters X 4 500 – 7 500 | Low-visibility speed limit (6 kn), guidance prompt |
+| `docking` | Tug reaches X ≥ 10 000 | Final approach speed (3 kn), heading error, moored ship proximity |
+| `emergency` | Manual select in top bar | Engine failure event, anchor deployment, Mayday protocol |
+
+Scenarios can also be manually selected from the top bar to explore specific rule sets independently.
+
+---
+
+### Collision Detection
+
+- **NPC vessels** — circle vs. circle check every frame. On hit: vessel sinks, 18 splash + 8 debris particles emitted, screen red-flash, 1-second camera shake, 0.85-second collision cooldown.
+- **Moored ships** — axis-aligned bounding box (3 static ships at quay). Tug is pushed out of overlap; sustained contact deducts −3 pts.
+- **Reefs/rocks** — 11 positions in the world. Not directly fatal to the player, but all NPC vessels steer away from them via avoidance radius checks.
+
+---
+
+## Rule Engine
+
+Rules are defined in `backend/rules/harbor_rules.yaml`. The engine evaluates them every tick in descending priority order (higher number = higher priority).
+
+### Rule Structure
+
 ```yaml
-Input:
-  adjust_speed = 8 knots
+- id: low_visibility_speed_limit
+  priority: 62
+  description: "Reduce speed in fog or low visibility"
+  conditions:
+    logic: AND
+    items:
+      - field: environment.visibility
+        operator: lt
+        threshold: 1.0
+      - field: agents.tugboat.speed
+        operator: gt
+        threshold: 6.0
+  actions:
+    - type: RECOMMEND
+      target: agents.tugboat.speed
+      value: 6.0
+  explanation_template: >
+    Visibility is {environment.visibility} km — below the 1 km threshold.
+    Maximum safe speed in low visibility is 6 knots.
+  metadata:
+    category: safety
+    educational_focus: "Reduced visibility requires reduced speed to allow reaction time."
+    tags: [fog, speed_limit, colregs]
 ```
 
-### Step 2 – State Update
-```
-tugboat.speed = 8 knots
-```
+**Condition fields** support dot-path resolution into `SystemState`:
+- `agents.tugboat.speed` — agent attribute
+- `environment.visibility` — environment attribute
+- `global_metrics.collision_risk` — computed metric
+- `events.engine_failure` — active event flag
 
-### Step 3 – Rule Evaluation
+**Template expressions** in action values support arithmetic: `{{agents.tugboat.speed + 2.0}}`
 
-System evaluates all rules in descending priority order:
-```
-R1 (priority 3) → not triggered
-R2 (priority 4) → not triggered
-R3 (priority 5) → condition satisfied
-```
+### Action Types
 
-### Step 4 – Conflict Resolution
+| Type | Effect |
+|------|--------|
+| `SET` | Directly assign a value to a state field |
+| `ADD` | Increment a metric by a value |
+| `CLAMP` | Constrain a field to `[min, max]` |
+| `RECOMMEND` | Informational — no state change, surfaces as explanation |
+| `TRIGGER_RULE` | Chain execution to another rule by ID |
+| `SPAWN_EVENT` | Set an active event flag (e.g. `engine_failure`) |
+| `LOG` | Write an audit entry to the session history |
 
-If multiple rules are satisfied:
-- Highest priority rule executes first
-- Lower priority rules may be skipped or re-evaluated
+### Conflict Resolution
 
-This ensures deterministic and transparent behavior.
+When multiple rules are satisfied in the same tick, the engine uses a **PRIORITY** strategy by default: the highest-priority rule's actions are applied first. Lower-priority rules that modify the same field are skipped to avoid contradictions.
 
-### Step 5 – Action Execution
-```
-collision_risk = true
-tugboat.speed = 5 knots
-```
-
-### Step 6 – Explanation Layer Activation
-
-The system generates a structured explanation:
-
-```
-Triggered Rule: R3
-Reason:
-  - Distance below safety threshold
-  - Speed above safe limit
-Consequence:
-  - Collision risk activated
-  - Speed automatically reduced
-Recommendation:
-  - Maintain speed under 6 knots in docking zone
-```
-
-Instead of hiding internal logic, the system explicitly exposes the causal chain to the learner.
+Rule chaining via `TRIGGER_RULE` allows multi-level decision flows (e.g. collision risk → emergency stop → anchor deployment) without coupling the rules directly.
 
 ---
 
-## 5. Educational Design Rationale
+## API Reference
 
-**Traditional immersive systems:**
-```
-Input → Simulation → Output
-```
-The decision process is hidden (black box).
+Base URL: `http://localhost:8000`
 
-**Our system:**
-```
-Input → Rule Evaluation → Prioritized Decision
-      → State Change → Explanation
-```
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Liveness check; returns active session count |
+| `GET` | `/scenarios` | List available scenario names and descriptions |
+| `POST` | `/sessions` | Create session — body: `{"scenario": "default"}` |
+| `DELETE` | `/sessions/{id}` | Destroy session and free state |
+| `POST` | `/sessions/{id}/start` | Re-initialize with a different scenario |
+| `POST` | `/sessions/{id}/step` | Advance one tick — body: `{"target_speed": 8.0, "target_heading": 90.0, "emergency_stop": false}` |
+| `POST` | `/sessions/{id}/reset` | Reset to initial scenario state |
+| `GET` | `/sessions/{id}/state` | Current `SystemState` as JSON |
+| `GET` | `/sessions/{id}/history` | All past state snapshots |
+| `GET` | `/sessions/{id}/rules` | Rule summary (for debug UI) |
 
-**Educational benefits:**
-- Makes cause-and-effect explicit
-- Encourages reflective reasoning
-- Reduces cognitive distraction from excessive visual detail
-- Supports transparent learning of domain rules
+**Step response:**
+```json
+{
+  "time_step": 42,
+  "state": { ... },
+  "explanations": [
+    {
+      "rule_id": "low_visibility_speed_limit",
+      "priority": 62,
+      "triggered": true,
+      "message": "Visibility is 0.5 km ...",
+      "conditions": [ ... ],
+      "actions": [ ... ],
+      "educational_summary": {
+        "category": "safety",
+        "educational_focus": "...",
+        "tags": ["fog", "speed_limit"]
+      }
+    }
+  ],
+  "rules_triggered": ["low_visibility_speed_limit"]
+}
+```
 
 ---
 
-## 6. Scalability
+## Educational Design
 
-The architecture is modular:
-- New rules can be added without redesigning the system
-- Agents and metrics are abstracted
-- Different maritime scenarios can reuse the same decision engine
+TugSim is designed around the principle that **transparency aids learning**. Rather than hiding the simulation's decision logic, the system surfaces it:
 
-To extend the system:
-1. Add new rule sets
-2. Modify state variables
-3. Define new explanation templates
+- **Explanation Panel** — pops up whenever a rule fires, showing which conditions were met, what action was taken, and why.
+- **Rule Log** — a persistent scrollable history of every rule triggered during the run, colour-coded by category (navigation / safety / emergency / educational).
+- **First-Person View** — pressing `V` switches to an immersive bridge view with visibility, engine status, and guidance indicators.
+- **Live HUD** — real-time speed, heading, zone, and throttle cap display below the canvas.
 
----
+The rule categories map to real maritime frameworks:
 
-## 7. Current Limitations
+| Category | Colour | Examples |
+|----------|--------|---------|
+| Navigation | Blue | Speed limits, heading constraints |
+| Safety | Yellow | Fog protocols, no-wake zones |
+| Emergency | Red | Engine failure, collision risk, anchor deployment |
+| Educational | Purple | Low-priority summaries for learner context |
 
-- Only one primary scenario implemented (Vancouver harbor tugboat case)
-- No user study validation yet
-- Rule-based system may require expansion for highly dynamic environments
-
-**Future work includes:**
-- Scenario expansion
-- User testing
-- Adaptive rule weighting
-
----
-
-## 8. Key Contribution
-
-This project demonstrates that:
-
-> **Educational effectiveness can be supported through transparent decision logic and explainable rule systems, without relying on high-fidelity visual simulation.**
+Rules are plain YAML — domain experts can add, remove, or adjust rules without touching any application code.
