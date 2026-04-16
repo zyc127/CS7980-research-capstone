@@ -2,14 +2,14 @@ export function ThrottleLever({ speed, maxKn = 18 }: { speed: number; maxKn?: nu
   const pct = (speed + 3) / (maxKn + 3);
   const top = (1 - pct) * 90;
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
       <div
         style={{
           position: "relative",
-          width: 14,
-          height: 104,
-          background: "#070402",
-          border: "1.5px solid #382010",
+          width: 16,
+          height: 110,
+          background: "#141008",
+          border: "1.5px solid rgba(185, 135, 50, 0.55)",
           borderRadius: 4,
         }}
       >
@@ -18,12 +18,15 @@ export function ThrottleLever({ speed, maxKn = 18 }: { speed: number; maxKn?: nu
             key={l}
             style={{
               position: "absolute",
-              left: -30,
+              left: -34,
               top: `${(i / 3) * 100}%`,
-              fontSize: 7,
-              color: "#504030",
+              fontSize: 9,
+              fontWeight: 700,
+              color: "#c09050",
               transform: "translateY(-50%)",
               whiteSpace: "nowrap",
+              fontFamily: "var(--font-mono, monospace)",
+              letterSpacing: "0.03em",
             }}
           >
             {l}
@@ -32,20 +35,20 @@ export function ThrottleLever({ speed, maxKn = 18 }: { speed: number; maxKn?: nu
         <div
           style={{
             position: "absolute",
-            left: -9,
+            left: -10,
             top: `${top}%`,
-            width: 32,
-            height: 13,
+            width: 36,
+            height: 14,
             background: "#c07830",
             borderRadius: 3,
             border: "1px solid #e09848",
             transform: "translateY(-50%)",
             transition: "top 0.15s",
+            boxShadow: "0 0 6px rgba(200, 120, 40, 0.45)",
           }}
         />
       </div>
-      <div style={{ fontSize: 8, color: "#504030", letterSpacing: 0.4 }}>THROTTLE</div>
+      <div style={{ fontSize: 9, fontWeight: 700, color: "#c09050", letterSpacing: "0.08em", fontFamily: "var(--font-display, monospace)" }}>THROTTLE</div>
     </div>
   );
 }
-

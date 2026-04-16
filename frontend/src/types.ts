@@ -13,6 +13,7 @@ export type BackendState = {
   };
   environment?: {
     zone?: string;
+    visibility?: number;
   };
   global_metrics?: Record<string, unknown> & {
     engine_status?: number;

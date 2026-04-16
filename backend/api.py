@@ -174,6 +174,10 @@ def _explanation_to_out(exp) -> ExplanationOut:
     edu = exp.to_educational_format()
     # Recursively sanitize the educational summary for JSON safety
     edu["message"] = _clean(edu.get("message", ""))
+    # Propagate rule metadata fields for frontend educational display
+    edu["category"] = exp.cause.get("category", "navigation")
+    edu["educational_focus"] = exp.cause.get("educational_focus", "")
+    edu["tags"] = exp.cause.get("tags", [])
 
     return ExplanationOut(
         rule_id=exp.rule_id,

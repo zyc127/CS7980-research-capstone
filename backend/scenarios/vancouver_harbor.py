@@ -66,7 +66,8 @@ def create_initial_state() -> SystemState:
     # All numeric metrics used by harbor_rules.yaml
     global_metrics = {
         "tugboat_cargo_distance": 50.0,  # metres apart at start
-        "collision_risk": 0.0,
+        "collision_risk": 0.0,           # 1.0 = engine-failure collision risk (triggers anchor)
+        "escort_separation_active": 0.0, # 1.0 = escort too close, separation protocol active
         "anchor_deployed": 0.0,
         "engine_status": 1.0,            # engine is operational
         "guidance_requested": 0.0,
@@ -120,18 +121,22 @@ def create_docking_scenario() -> SystemState:
     )
     updated_metrics = {
         **state.global_metrics,
-        "heading_error": 25.0,    # 25° misaligned — will trigger alignment rule
-        "distance_to_berth": 3.0, # 3 m from berth — will trigger final stop
+        "heading_error": 25.0,      # 25° 偏差 — 将触发对准规则
+        "distance_to_berth": 200.0, # 200 m — 给玩家足够的接近空间
     }
-    # Give the tugboat some speed so the stop rules fire
+    # 初始速度适中，让玩家体验 docking_approach_speed 规则（最大 2 节限制）
     updated_tugboat = state.agents["tugboat"].model_copy(
-        update={"speed": 4.0, "heading": 65.0}
+        update={"speed": 3.0, "heading": 65.0}
+    )
+    # 靠泊模式不需要货轮移动：将其停在港口外等候
+    updated_cargo = state.agents["cargo_ship"].model_copy(
+        update={"speed": 0.0, "position_x": 8500.0, "position_y": 0.0}
     )
     return state.model_copy(
         update={
             "environment": updated_env,
             "global_metrics": updated_metrics,
-            "agents": {**state.agents, "tugboat": updated_tugboat},
+            "agents": {**state.agents, "tugboat": updated_tugboat, "cargo_ship": updated_cargo},
         }
     )
 
